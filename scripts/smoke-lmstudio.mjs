@@ -25,7 +25,7 @@ const baseEnv = {
   LMSTUDIO_CHAT_MODEL: model,
 }
 
-await step('Claude Code version is preserved', async () => {
+await step('Windrise CLI version is available', async () => {
   const { stdout } = await execFileAsync(process.execPath, [cliPath, '--version'], {
     cwd: root,
     env: baseEnv,

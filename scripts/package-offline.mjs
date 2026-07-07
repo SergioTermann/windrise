@@ -89,7 +89,7 @@ async function buildManifest() {
   return {
     createdAt: new Date().toISOString(),
     sourceRoot: root,
-    packageName: 'claude-code-lmstudio-offline',
+    packageName: 'windrise-llmwiki-offline',
     entries: items,
     commands: [
       'npm run smoke:offline',
@@ -146,7 +146,7 @@ async function writeTarball(outDir) {
 }
 
 function offlineReadme() {
-  return `# Windrise / SiliconFlow Package
+  return `# Windrise LLMWiki Offline Package
 
 This package is intended to run after dependencies, source, build output, local scripts, and the local fault-code knowledge base have been copied together.
 
@@ -161,10 +161,10 @@ bin/windrise doctor
 
 ## Requirements
 
-- Node.js compatible with this recovered source tree
+- Node.js compatible with this Windrise LLMWiki package
 - SiliconFlow API key for live model calls
 - The configured model, default: \`Qwen/Qwen3.6-35B-A3B\`
 
-No remote Claude or Anthropic endpoint is required. LLMWiki checks remain local; live chat uses SiliconFlow.
+No external model endpoint is required for local LLMWiki checks; live chat uses SiliconFlow when configured.
 `
 }

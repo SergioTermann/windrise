@@ -1,11 +1,11 @@
 {
-  "name": "claude-code-source-recovery",
-  "version": "2.1.88-recovered",
+  "name": "windrise-llmwiki",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Recovered source tree for @anthropic-ai/claude-code 2.1.88 with local build/run helpers.",
+  "description": "Windrise LLMWiki local wind-power operations assistant and diagnostic knowledge architecture.",
   "bin": {
-    "claude-recovered": "./dist/claude.js"
+    "windrise": "./dist/claude.js"
   },
   "scripts": {
     "build": "node scripts/build.mjs",

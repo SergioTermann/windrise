@@ -109,7 +109,7 @@ async function runLlmwiki(command) {
 }
 
 async function loadLlmwikiCommand() {
-  const outfile = join(tmpdir(), 'claude-code-audit-llmwiki-command.mjs')
+  const outfile = join(tmpdir(), 'windrise-audit-llmwiki-command.mjs')
   const esbuild = await import('esbuild')
   await esbuild.build({
     entryPoints: [join(root, 'src', 'commands', 'llmwiki', 'llmwiki.ts')],

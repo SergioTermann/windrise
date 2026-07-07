@@ -160,7 +160,7 @@ async function runLlmWikiCommand(args, commandIndex, env) {
     : ''
   const trailingArgs = args.slice(commandIndex + 1).join(' ')
   const commandArgs = [inlineArgs, trailingArgs].filter(Boolean).join(' ')
-  const outfile = join(tmpdir(), 'claude-code-llmwiki-command.mjs')
+  const outfile = join(tmpdir(), 'windrise-llmwiki-command.mjs')
   const esbuild = await import('esbuild')
   await esbuild.build({
     entryPoints: [join(root, 'src', 'commands', 'llmwiki', 'llmwiki.ts')],
@@ -187,7 +187,7 @@ async function runWorkOrderCommand(args, commandIndex) {
     '/smart-workorder',
     '/gongdan',
   ])
-  const outfile = join(tmpdir(), 'claude-code-workorder-command.mjs')
+  const outfile = join(tmpdir(), 'windrise-workorder-command.mjs')
   const esbuild = await import('esbuild')
   await esbuild.build({
     entryPoints: [join(root, 'src', 'skills', 'bundled', 'workOrderBuilder.ts')],
@@ -240,7 +240,7 @@ async function runLmStudioCommand(args, commandIndex, env) {
     : ''
   const trailingArgs = args.slice(commandIndex + 1).join(' ')
   const commandArgs = [inlineArgs, trailingArgs].filter(Boolean).join(' ')
-  const outfile = join(tmpdir(), 'claude-code-lmstudio-command.mjs')
+  const outfile = join(tmpdir(), 'windrise-lmstudio-command.mjs')
   const esbuild = await import('esbuild')
   await esbuild.build({
     entryPoints: [join(root, 'src', 'commands', 'lmstudio', 'lmstudio.ts')],

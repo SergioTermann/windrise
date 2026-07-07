@@ -1,115 +1,116 @@
-# Claude Code 2.1.88 Source Recovery
+# Windrise LLMWiki
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Version-2.1.88-blue.svg" alt="Version">
-  <img src="https://img.shields.io/badge/Status-Recovered-green.svg" alt="Status">
-  <img src="https://img.shields.io/badge/Language-TypeScript-blue.svg" alt="Language">
-  <img src="https://img.shields.io/badge/UI-Ink%20%2F%20React-orange.svg" alt="UI">
-</p>
+Windrise LLMWiki 是面向风电场运维的本地知识助手与诊断编排系统。项目目标不是做一个新的展示页，而是把风机故障、场站 SOP、厂家手册、历史工单和专家规则组织成可追溯、可验证、可闭环的技术架构。
 
----
+## 项目定位
 
-## 🌟 强力推荐：DataEyesAI - 你的全能 AI 助手
+- 本地优先：支持 LM Studio / 本地模型接入，知识库和诊断流程可在内网运行。
+- LLMWiki 知识底座：统一索引故障码、机型、部件、测点、工单、SOP 和来源文档。
+- WindOps 诊断流程：从告警或现场描述生成结构化 Case，再由 Planner 拆解排查路径。
+- 证据可追溯：回答必须引用厂家手册、故障码表、场站 SOP、专家规则或历史工单等来源。
+- 安全门控：涉及复位、旁路、限电、登塔、停送电等动作时，优先输出风险、前置条件和人工确认点。
+- 反馈闭环：工单关闭后沉淀根因、措施、备件、复发率和专家复核结果。
 
-> **想要像 Claude Code 一样高效，却苦于没有稳定的 API 接入？**
+## 技术架构
 
-**[DataEyesAI](https://dataeyes.ai/?promoter_code=4qx9suz3)** 是为你量身打造的一站式 AI 聚合平台！
+```text
+业务入口
+  -> 告警 / 故障码 / 运维提问 / 现场短反馈
 
-- ⚡ **聚合全球顶尖模型**：一键接入 GPT-5、Claude 4.6、Gemini 3.1 等主流大模型。
-- 💰 **极致性价比**：官方原厂满血版 API，价格却极具竞争力，让你用最少的成本享受最强的 AI 能力。
-- 🛡️ **稳定可靠**：专业运维 7x24 小时守护，企业级 SLA 保障，告别连接断断续续的烦恼。
-- 🛠️ **开发者友好**：标准 API 接口，完美适配各类开源项目、CLI 工具及开发流程。
+数据标准化层
+  -> 风机、机型、故障码、部件、测点、时间、工况、现场状态
 
-👉 **[立即注册体验，开启你的 AI 生产力起飞之旅！](https://dataeyes.ai/?promoter_code=4qx9suz3)**
+LLMWiki 知识层
+  -> 厂家手册、故障码表、场站 SOP、专家规则、历史工单、图谱路径
 
-👉 请点击：[https://dataeyes.ai/?promoter_code=4qx9suz3](https://dataeyes.ai/?promoter_code=4qx9suz3)
+诊断编排层
+  -> Case 标准化、Planner 路径拆解、候选原因排序、验证动作生成
 
----
+工具与系统层
+  -> CMS、SCADA、EAM、备件、气象、工作票等只读查询接口
 
-> [!IMPORTANT]
-> **这是一个针对 `@anthropic-ai/claude-code` 2.1.88 版本的源码整理与重建项目。**
-> 该版本发布到 npm 时附带了可还原源码的 source map。本项目基于 `sources` 和 `sourcesContent` 将其还原为可读的源码目录，旨在研究 Claude Code 的 CLI 架构、命令系统及 MCP 实现。
-> 
-> 从 cli.js.map 还原后，一共有 70w 行代码
-> <img width="794" height="387" alt="图片" src="https://github.com/user-attachments/assets/ab30578b-d6d2-440c-abde-ddf09e5d42de" />
+安全与合规层
+  -> 操作风险识别、强制人工确认、禁止越权执行
 
-
-## 🚀 快速安装 (镜像源)
-
-背景：2026.03.31 claude code 上 npm 上传了包含 claude code 源码的 `cli.js.map` 文件
-
-<img width="1497" height="242" alt="图片" src="https://github.com/user-attachments/assets/b1a01c8d-f14c-46d5-b6cb-4f5b4f90c9ab" />
-
-
-由于 2.1.88 版本已从[官方 npm](https://www.npmjs.com/package/@anthropic-ai/claude-code/v/2.1.88?activeTab=code) 下架，直接使用 `npm install @anthropic-ai/claude-code@2.1.88` 会报错，你可以通过腾讯缓存镜像进行安装：
-
-```shell
-npm install -g https://mirrors.cloud.tencent.com/npm/@anthropic-ai/claude-code/-/claude-code-2.1.88.tgz
+反馈学习层
+  -> 工单结果、专家复核、短期 TTL 信息、本地项目记忆
 ```
 
-<img width="626" height="370" alt="图片" src="https://github.com/user-attachments/assets/bcc1d094-f19d-4bd7-b53b-898399c6d117" />
+## 核心能力
 
+### 故障诊断
 
-> 手慢无，不知道腾讯云的镜像缓存什么时候也没了
+- 支持故障码精确匹配、品牌/机型限定、短码歧义识别。
+- 输出故障含义、可能原因、排查步骤、复位条件和安全提醒。
+- 使用 LLMWiki 证据分级：厂家手册/故障码表 > 场站 SOP > 专家规则 > 已关闭历史工单 > 未验证经验。
 
+### 工单生成
 
-可以关注我的公众号，行业第一手信息，都会发在文章中
+- 根据诊断 Case 生成运维工单建议。
+- 包含故障对象、现象、影响范围、风险等级、处理步骤、备件建议和验证口径。
+- 支持把关闭结果反哺到项目知识和后续诊断流程中。
 
-<img width="932" height="380" alt="图片" src="https://github.com/user-attachments/assets/1e0b00bc-d44b-4466-a488-703933428b93" />
+### 本地记忆
 
+- 当前实现为 Windrise 自研轻量记忆层。
+- 会话内保存最近故障对象、已执行动作、用户短反馈和关键上下文。
+- 项目级记忆使用本地 JSON 持久化，不依赖 mem0。
 
----
+## 目录说明
 
-## 项目结构概览
+```text
+src/commands/llmwiki/       LLMWiki 命令、查询、trace 和知识证据排序
+src/skills/bundled/         风电故障诊断与工单生成内置技能
+scripts/windrise-chat.mjs   本地聊天入口和 WindOps 架构上下文
+scripts/doc-knowledge-server.mjs
+                            文档知识服务、会话记忆和项目记忆
+scripts/build-wind-llmwiki.mjs
+                            构建风电 LLMWiki 知识索引
+scripts/build-fault-index.mjs
+                            构建结构化故障码索引
+scripts/build-fault-mechanism-graph.mjs
+                            构建故障机理图谱
+wind-llmwiki/               生成后的风电知识库资产
+generated-knowledge/        结构化知识、图谱和评估产物
+```
 
-本项目以 `src/` 为核心，高度还原了原始代码组织：
+## 常用命令
 
-- **`src/entrypoints/`** - CLI 入口与初始化逻辑
-- **`src/commands/`** - 强大的命令系统 (`login`, `mcp`, `review`, `tasks` 等)
-- **`src/components/`** - 基于 **React + Ink** 的终端 UI 组件
-- **`src/services/`** - 核心业务逻辑 (策略、同步、远程能力等)
-- **`src/hooks/`** - 交互式终端状态管理
-- **`src/utils/`** - 认证、文件操作、进程管理等工具函数
-- **`src/ink/`** - 定制的终端渲染基础设施
+```bash
+npm install
+npm run build:wind-knowledge
+npm run smoke:wind-llmwiki
+npm run eval:faults
+npm run smoke:skills
+npm run serve:doc-knowledge
+```
 
----
+## 本地模型配置
 
-## 源码亮点
+默认面向本地模型服务运行。可通过环境变量配置模型端点：
 
-从还原的代码中，我们可以深入探索以下核心设计：
+```bash
+export LMSTUDIO_BASE_URL=http://127.0.0.1:1234/v1
+export LMSTUDIO_MODEL=qwen/qwen3.5-9b
+```
 
-- **命令装载机制**：支持内建命令、动态 skills、插件及 MCP 命令的混合装载。
-- **终端 UI 艺术**：如何利用 React 组件在终端中构建复杂的交互界面。
-- **MCP 深度集成**：Model Context Protocol 在 CLI 中的具体实现与应用。
-- **Feature Flags**：源码中随处可见的特性裁剪与构建期控制逻辑。
+然后运行：
 
----
+```bash
+npm run run:lmstudio -- "查询 303804 故障的排查路径"
+```
 
-## ⚠️ 免责声明
+## 验证
 
-- **非官方项目**：本仓库并非 Anthropic 官方仓库，亦不代表其立场。
-- **版权说明**：原始代码的版权、商标及相关权利归原权利方（Anthropic）所有。
-- **研究用途**：本项目仅供归档、结构分析与源码阅读，不应被视为官方开源项目。
-- **法律风险**：如需二次发布或商用，请自行评估相关许可与法律风险。
+推荐在修改诊断架构、LLMWiki 索引或内置技能后执行：
 
----
+```bash
+node --check scripts/windrise-chat.mjs
+npm run eval:faults
+npm run smoke:skills
+npm run smoke:wind-llmwiki
+```
 
-## 后续计划 (待补齐)
+## 命名说明
 
-如果你想让它跑起来，建议按以下步骤尝试：
-1. 添加 `package.json` 并配置依赖。
-2. 补齐构建工具链。
-3. 处理 `bun:bundle` 宏与 feature flags。
-4. 验证核心命令的运行情况。
-
----
-
-## 致谢
-
-感谢发布时未移除的 **Source Map**，让这份精致的工程结构得以重现。
-
----
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=ponponon/claude_code_src&type=Date)](https://star-history.com/#ponponon/claude_code_src&Date)
+本项目名称为 Windrise LLMWiki。README、包名和运行输出应使用 Windrise / LLMWiki 口径；历史恢复源码中的上游字符串只作为底层代码遗留存在，不代表当前项目定位。
