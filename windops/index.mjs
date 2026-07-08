@@ -60,13 +60,17 @@ export {
   applyFallbackStrategy,
   ToolTimeoutError,
 } from './tools/executor.mjs'
+export { createMockConnectors } from './tools/mock-connectors.mjs'
 
 // ⑥ 模型层
 export { routeWindOpsModel, MODEL_ROUTES } from './models/model-router.mjs'
 export { gradeEvidence, EVIDENCE_TIERS, evidencePriorityLabels } from './models/evidence-grader.mjs'
 export { createSemanticCache, buildCacheKey } from './models/semantic-cache.mjs'
+export { createBm25Index, tokenize } from './models/bm25-retriever.mjs'
+export { detectAnomalies } from './models/timeseries-anomaly.mjs'
 
 // ⑦ 反馈层
 export { buildWindOpsFeedbackLoop, extractFeedbackItems } from './feedback/feedback-loop.mjs'
 export { buildWindOpsTrace } from './feedback/trace-logger.mjs'
 export { createReviewPool } from './feedback/review-pool.mjs'
+export { summarizeKpi } from './feedback/kpi.mjs'

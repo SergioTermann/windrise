@@ -81,10 +81,10 @@ windops/                    风电运维七层架构（目录即分层）
   data/                     ② 数据层：FaultQueryRewriter、结构化 Case、厂家/术语同义映射
   memory/                   ③ 记忆层：四层记忆 + Memory Router + mem0 + 工作记忆(TTL/置信度衰减)
   core/                     ④ 模型应用层：Planner、Safety Gate、编排器
-  tools/                    ⑤ 工具层：ToolRegistry + Executor(重试/超时/柔性降级/安全门)
-  models/                   ⑥ 模型层：任务路由、证据分级、L1 语义缓存
-  feedback/                 ⑦ 反馈层：工单闭环、TraceLogger、审核池(轨迹落库/治理)
-  tests/                    七层单元 + HTTP 集成测试（102 项）
+  tools/                    ⑤ 工具层：ToolRegistry + Executor(重试/超时/柔性降级/安全门) + 模拟连接器
+  models/                   ⑥ 模型层：任务路由、证据分级、L1 语义缓存、BM25 召回、时序异常检测
+  feedback/                 ⑦ 反馈层：工单闭环、TraceLogger、审核池(轨迹落库/治理)、KPI 采集
+  tests/                    七层单元 + HTTP 集成测试（127 项）
   index.mjs                 七层统一入口
   test-architecture.mjs     七层架构快照测试
 src/commands/llmwiki/       LLMWiki 命令、查询、trace 和知识证据排序
