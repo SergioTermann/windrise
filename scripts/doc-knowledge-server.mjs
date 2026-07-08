@@ -10,6 +10,8 @@ import { fileURLToPath } from 'url'
 import { promisify } from 'util'
 import {
   createWindriseMem0Memory,
+  createSemanticCache,
+  createReviewPool,
   buildWindOpsArchitectureContext,
   buildWindOpsArchitecturePayload,
   buildWindOpsSystemInstruction,
@@ -52,6 +54,11 @@ const MAX_UPLOAD_BYTES = Number.parseInt(
   10,
 )
 const mem0Memory = createWindriseMem0Memory({ service: 'doc-knowledge-server' })
+// ⑥ 模型层 L1 语义缓存：仅缓存故障码解释/FAQ（与具体风机无关），命中毫秒级返回。
+const llmWikiSemanticCache = createSemanticCache()
+// ⑦ 反馈层 审核池：每轮 WindOps 调用轨迹落库，供复盘/质检治理。
+const WINDOPS_REVIEW_POOL_PATH = process.env.WINDOPS_REVIEW_POOL_PATH || join(OUT_DIR, 'windops-review-pool.jsonl')
+const windopsReviewPool = createReviewPool({ path: WINDOPS_REVIEW_POOL_PATH })
 
 await mkdir(UPLOAD_DIR, { recursive: true })
 await mkdir(OUT_DIR, { recursive: true })
@@ -318,7 +325,14 @@ async function handleChat(req, res) {
     })
   }
   if (isExplicitFaultCodeKnowledgeQuery(message)) {
-    const knowledgeAnswer = await answerExplicitFaultCodeFromLlmWiki(message)
+    // L1 语义缓存：按故障签名命中；未命中再走 LLMWiki 检索并回填。
+    const cacheCase = architectureSeed?.case
+    const cached = cacheCase ? llmWikiSemanticCache.get(cacheCase) : null
+    let knowledgeAnswer = cached?.answer || null
+    if (!knowledgeAnswer) {
+      knowledgeAnswer = await answerExplicitFaultCodeFromLlmWiki(message)
+      if (knowledgeAnswer && cacheCase) llmWikiSemanticCache.set(cacheCase, knowledgeAnswer)
+    }
     if (knowledgeAnswer) {
       const answer = prepareChatAnswer(message, knowledgeAnswer, reasoning, { mode: 'field', session })
       const windopsArchitecture = buildServiceWindOpsArchitecture(message, session, answer, architectureSeed)
@@ -328,6 +342,7 @@ async function handleChat(req, res) {
         conversation_id: conversationId,
         reasoning,
         windops_architecture: windopsArchitecture,
+        source: cached ? 'l1_semantic_cache' : 'llmwiki',
       })
     }
   }
@@ -600,6 +615,19 @@ async function rememberChatTurn(conversationId, session, userMessage, assistantA
   }
   await persistChatSession(conversationId, session)
   await persistProjectChatMemory(projectChatMemory)
+  // ⑦ 反馈层：把本轮调用轨迹落库到审核池（失败不阻断对话）。
+  if (windopsArchitecture?.trace) {
+    const traceRecord = {
+      ...windopsArchitecture.trace,
+      caseId: windopsArchitecture.case?.id || windopsArchitecture.trace.caseId,
+      turbineId: windopsArchitecture.case?.turbineId || windopsArchitecture.trace.turbineId,
+      system: windopsArchitecture.case?.system || windopsArchitecture.trace.system,
+      conversationId,
+    }
+    await windopsReviewPool.append(traceRecord).catch(error =>
+      console.warn(`WindOps review-pool append failed: ${error.message}`),
+    )
+  }
   await mem0Memory.rememberTurn({
     conversationId,
     userMessage,

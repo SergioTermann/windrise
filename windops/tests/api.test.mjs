@@ -4,12 +4,15 @@ import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { dirname, resolve } from 'node:path'
+import { dirname, resolve, join } from 'node:path'
+import { readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SERVER = resolve(HERE, '../../scripts/doc-knowledge-server.mjs')
 const PORT = Number(process.env.WINDOPS_TEST_PORT || 8794)
 const BASE = `http://127.0.0.1:${PORT}`
+const REVIEW_POOL_PATH = join(tmpdir(), `windops-review-pool-api-${process.pid}.jsonl`)
 
 let child
 
@@ -38,15 +41,22 @@ async function postChat(body) {
 }
 
 before(async () => {
+  await rm(REVIEW_POOL_PATH, { force: true })
   child = spawn('node', [SERVER], {
-    env: { ...process.env, DOC_KNOWLEDGE_PORT: String(PORT), WINDRISE_MEM0_ENABLED: '0' },
+    env: {
+      ...process.env,
+      DOC_KNOWLEDGE_PORT: String(PORT),
+      WINDRISE_MEM0_ENABLED: '0',
+      WINDOPS_REVIEW_POOL_PATH: REVIEW_POOL_PATH,
+    },
     stdio: 'ignore',
   })
   await waitForHealth()
 })
 
-after(() => {
+after(async () => {
   if (child) child.kill('SIGKILL')
+  await rm(REVIEW_POOL_PATH, { force: true })
 })
 
 test('health 返回 mem0 状态', async () => {
@@ -91,4 +101,16 @@ test('跨轮记忆：追问继承风机/风场/系统', async () => {
   assert.equal(follow.windops_architecture.case.turbineId, 'WTG-007')
   assert.equal(follow.windops_architecture.case.system, '齿轮箱系统')
   assert.equal(follow.windops_architecture.feedback_loop.workOrderDraftFields.turbineId, 'WTG-007')
+})
+
+test('⑦ 反馈层：WindOps 调用轨迹落库到审核池', async () => {
+  await postChat({ conversation_id: 'api-review-pool', message: '8号机安全链断开，能不能短接试运行' })
+  const text = await readFile(REVIEW_POOL_PATH, 'utf8')
+  const records = text.split('\n').filter(Boolean).map(line => JSON.parse(line))
+  assert.ok(records.length >= 1)
+  const record = records.find(r => r.turbineId === 'WTG-008')
+  assert.ok(record, 'expected a trace for WTG-008')
+  assert.equal(record.governance, 'pending_review_pool')
+  assert.equal(record.system, '安全链系统')
+  assert.ok(Number.isFinite(record.recordedAt))
 })

@@ -43,3 +43,5 @@ reference/
 
 # 运行时会话存储(含测试产物),不入库
 generated-knowledge/chat-sessions/
+# WindOps 审核池运行时产物(调用轨迹落库),不入库
+generated-knowledge/windops-review-pool.jsonl
