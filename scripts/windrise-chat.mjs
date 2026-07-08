@@ -7,6 +7,12 @@ import { stdin as input, stdout as output } from 'node:process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
+import {
+  createWindriseMem0Memory,
+  buildWindOpsArchitectureContext,
+  buildWindOpsArchitecturePayload,
+  buildWindOpsSystemInstruction,
+} from '../windops/index.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -26,6 +32,8 @@ const LOCAL_BASE_URL = (
   'https://api.siliconflow.cn/v1'
 ).replace(/\/$/, '')
 const PROVIDER_LABEL = PROVIDER === 'siliconflow' ? 'SiliconFlow' : 'LM Studio'
+const CLI_CONVERSATION_ID = process.env.WINDRISE_CONVERSATION_ID || 'windrise-cli'
+const mem0Memory = createWindriseMem0Memory({ service: 'windrise-chat' })
 const WIND_FARM_MODEL_ENTRIES = JSON.parse(
   readFileSync(join(ROOT, 'src', 'data', 'windFarmModels.json'), 'utf8'),
 )
@@ -58,12 +66,7 @@ const conversationMemory = {
 }
 
 function windOpsSystemInstruction() {
-  return [
-    '你是 Windrise 风电运维智导助手，后端架构按 01_lecture1_wind_ops 的七层路线执行。',
-    '核心链路：业务层接收告警/提问；数据层先做故障 Case 标准化；记忆层使用风机画像、故障画像和短期工作记忆；模型应用层由 Planner 拆诊断路径；工具层只读调用 CMS/SCADA/EAM/备件/气象/工作票；模型层按任务路由；反馈层通过工单结果和专家复核沉淀经验。',
-    '输出约束：先给结论，再给一个最小下一步；关键结论必须基于本地资料、实时/快照数据或明确标注为待验证；不能编造故障原因、备件型号、复位权限或现场测量值。',
-    '安全边界：远程复位、启停机、参数调整、登塔、开柜、带电作业等高风险动作只生成建议和校验项，必须经过作业票、风速、停机状态、权限和人工二次确认。',
-  ].join('\n')
+  return buildWindOpsSystemInstruction()
 }
 
 function buildWindOpsCase(query) {
@@ -109,16 +112,7 @@ function buildWindOpsCase(query) {
 }
 
 function renderWindOpsArchitectureContext(query) {
-  const faultCase = buildWindOpsCase(query)
-  const missing = faultCase.missing.length ? faultCase.missing.join('、') : '无明显缺口'
-  return [
-    'WindOps 架构上下文：',
-    `- 结构化 Case：风机=${faultCase.turbineId}；系统=${faultCase.system}；部件=${faultCase.component}；故障码=${faultCase.faultCode}；时间窗=${faultCase.timeWindow}；缺失=${missing}。`,
-    '- Planner 默认路径：确认告警和运行状态 -> 拉取 CMS/SCADA 趋势 -> 检索手册/SOP/历史工单 -> 通过 Safety Gate -> 输出一个现场动作和工单草稿字段。',
-    '- LLMWiki 证据分级：厂家手册/故障码表 > 场站 SOP > 专家知识 > 已关闭历史工单 > 未验证经验。',
-    '- Safety Gate：风速、停机状态、作业票、权限、二次确认；高风险控制动作只给建议，不直连执行。',
-    '- 反馈闭环：工单关闭后沉淀根因、措施、备件、复发率和专家复核；临时限电/临时旁路/短期天气影响设置 TTL。',
-  ].join('\n')
+  return buildWindOpsArchitectureContext(query)
 }
 
 function printBanner() {
@@ -1156,7 +1150,8 @@ async function answerNormally(text) {
     return
   }
 
-  const messages = [...history, { role: 'user', content: text }]
+  const mem0Context = await mem0Memory.searchContext(text, { conversationId: CLI_CONVERSATION_ID })
+  const messages = buildMessagesWithMem0Context(text, mem0Context)
   try {
     const answer = await printStreamedWindriseAnswer(messages, text)
     if (!answer) {
@@ -1178,6 +1173,19 @@ async function answerNormally(text) {
     )
     rememberTurn(text, fallback)
   }
+}
+
+function buildMessagesWithMem0Context(text, mem0Context = '') {
+  if (!mem0Context) return [...history, { role: 'user', content: text }]
+  const [system, ...rest] = history
+  return [
+    {
+      ...system,
+      content: `${system.content}\n\nmem0 长期记忆：\n${mem0Context}`,
+    },
+    ...rest,
+    { role: 'user', content: text },
+  ]
 }
 
 async function answerWithRetrieval(text) {
@@ -1444,7 +1452,7 @@ function deterministicFieldAnswer(query, hits = '', retrievalQuery = '') {
 }
 
 function deterministicGenericMechanismAnswer(text) {
-  const rule = genericMechanismRules().find(item => item.pattern.test(text))
+  const rule = selectGenericMechanismRule(text)
   if (!rule || !isFieldActionQuery(text)) return ''
   return [
     `结论：先按「${rule.label}」处理。`,
@@ -1455,6 +1463,23 @@ function deterministicGenericMechanismAnswer(text) {
     '',
     `请反馈：${rule.feedback}`,
   ].join('\n')
+}
+
+function selectGenericMechanismRule(text) {
+  const matched = genericMechanismRules().filter(rule => rule.pattern.test(String(text || '')))
+  if (!matched.length) return null
+  return matched.sort((a, b) => genericMechanismSpecificityScore(b, text) - genericMechanismSpecificityScore(a, text))[0]
+}
+
+function genericMechanismSpecificityScore(rule, text) {
+  const source = String(text || '')
+  const label = String(rule?.label || '')
+  const pattern = String(rule?.pattern || '')
+  let score = Math.min(80, label.length * 2) + Math.min(60, pattern.length / 4)
+  if (/24\s*V|变桨|安全链|直流母线|齿轮箱|发电机轴承|主轴|水冷|通信|箱变/.test(label + pattern)) score += 80
+  if (/变桨.*24\s*V|24\s*V.*变桨/i.test(source) && /变桨.*24\s*V|24\s*V.*变桨|变桨.*主电源|变桨.*开关反馈|变桨.*控制电源/i.test(pattern)) score += 300
+  if (/传感器|测量.*跳变|跳变|漂移/i.test(pattern) && /(变桨|齿轮箱|发电机|主轴|安全链|通信|箱变|水冷)/i.test(source)) score -= 120
+  return score
 }
 
 function isYawHydraulicInitialQuestion(text) {
@@ -1587,10 +1612,22 @@ function rememberTurn(user, assistant, metadata = {}) {
   conversationMemory.lastUser = userText
   conversationMemory.lastAssistant = String(assistant || '').trim()
   updateGeneralMemory(userText)
+  const windOpsArchitecture = buildWindOpsArchitecturePayload(userText, {}, conversationMemory.lastAssistant)
   if (metadata.faultCode) conversationMemory.lastFaultCode = String(metadata.faultCode)
   if (metadata.faultName) conversationMemory.lastFaultName = String(metadata.faultName)
   if (metadata.faultAnswer) conversationMemory.lastFaultAnswer = String(metadata.faultAnswer).trim()
   if (metadata.source) conversationMemory.lastSource = String(metadata.source).trim()
+  void mem0Memory.rememberTurn({
+    conversationId: CLI_CONVERSATION_ID,
+    userMessage: userText,
+    assistantAnswer: conversationMemory.lastAssistant,
+    metadata: {
+      faultCodes: conversationMemory.lastFaultCode ? [conversationMemory.lastFaultCode] : [],
+      windOpsCase: windOpsArchitecture.case?.id,
+      windOpsSystem: windOpsArchitecture.case?.system,
+      safetyDecision: windOpsArchitecture.safety_gate?.decision,
+    },
+  })
 }
 
 function updateGeneralMemory(text) {

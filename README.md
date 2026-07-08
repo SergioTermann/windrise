@@ -54,14 +54,41 @@ LLMWiki 知识层
 
 - 当前实现为 Windrise 自研轻量记忆层。
 - 会话内保存最近故障对象、已执行动作、用户短反馈和关键上下文。
-- 项目级记忆使用本地 JSON 持久化，不依赖 mem0。
+- 项目级记忆使用本地 JSON 持久化；也支持可选接入 mem0 长期记忆。
+
+### mem0 长期记忆
+
+默认不强制启用 mem0，避免没有 API Key 时影响本地运行。配置 API Key 后，Windrise 会把对话轮次同步写入 mem0，并在下一轮请求前按当前问题检索相关长期记忆。
+
+```bash
+export WINDRISE_MEM0_API_KEY=你的_mem0_api_key
+export WINDRISE_MEM0_ENABLED=1
+
+# 可选
+export WINDRISE_MEM0_USER_ID=windrise-user
+export WINDRISE_MEM0_AGENT_ID=windrise
+export WINDRISE_MEM0_APP_ID=windrise-llmwiki
+export WINDRISE_MEM0_TOP_K=5
+```
+
+实现上使用 mem0 Cloud REST API，不直接安装 `mem0ai` SDK；原因是当前项目依赖的 `@anthropic-ai/sdk@0.68.0` 与 `mem0ai@3.x` 的 peer 依赖范围冲突。REST 适配层位于 `windops/memory/mem0-adapter.mjs`（记忆层），不配置 mem0 时仍走本地 JSON 记忆。
 
 ## 目录说明
 
 ```text
+windops/                    风电运维七层架构（目录即分层）
+  business/                 ① 业务层：系统指令、意图路由
+  data/                     ② 数据层：FaultQueryRewriter、结构化 Case
+  memory/                   ③ 记忆层：四层记忆 + Memory Router + mem0 适配
+  core/                     ④ 模型应用层：Planner、Safety Gate、编排器
+  tools/                    ⑤ 工具层：ToolRegistry（权限/超时/降级）
+  models/                   ⑥ 模型层：任务路由、证据分级
+  feedback/                 ⑦ 反馈层：工单闭环、调用轨迹 TraceLogger
+  index.mjs                 七层统一入口
+  test-architecture.mjs     七层架构与集成测试
 src/commands/llmwiki/       LLMWiki 命令、查询、trace 和知识证据排序
 src/skills/bundled/         风电故障诊断与工单生成内置技能
-scripts/windrise-chat.mjs   本地聊天入口和 WindOps 架构上下文
+scripts/windrise-chat.mjs   本地聊天入口（消费 windops/ 七层架构）
 scripts/doc-knowledge-server.mjs
                             文档知识服务、会话记忆和项目记忆
 scripts/build-wind-llmwiki.mjs
@@ -83,6 +110,9 @@ npm run smoke:wind-llmwiki
 npm run eval:faults
 npm run smoke:skills
 npm run serve:doc-knowledge
+npm test                     # 七层架构全部测试（单元 + HTTP 集成）
+npm run test:windops-unit    # 仅七层单元测试（domain/data/memory/core/tools/models/business/orchestrator）
+npm run test:windops-api     # 仅 HTTP 端到端集成测试（自带 server 生命周期）
 ```
 
 ## 本地模型配置

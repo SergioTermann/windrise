@@ -82,48 +82,47 @@ tr:nth-child(even) td { background: #f8fafc; }
 <!-- Slide 1: 封面 -->
 <section class="slide cover active">
   <h1>风电运维智导助手</h1>
-  <div class="subtitle">基于 01_lecture1 的 Agent 技术路线改造版</div>
   <div>
     <span class="chip">七层架构</span>
     <span class="chip">CMS / 告警平台</span>
     <span class="chip">故障诊断</span>
-    <span class="chip">混合 RAG</span>
+    <span class="chip">LLM Wiki</span>
     <span class="chip">工单闭环</span>
     <span class="chip">安全合规</span>
   </div>
   <div class="meta">面向风场值班员、检修工程师、远程诊断中心</div>
+  <div class="meta">设计人：郝帅</div>
 </section>
 
 <!-- Slide 2: 总览 -->
 <section class="slide">
-  <h2>本路线要解决什么</h2>
+  <h2>先看问题：这条技术路线要解决什么</h2>
   <div class="two-col">
-    <div class="card">
-      <h3>从原课件继承的技术骨架</h3>
+    <div class="card bad">
+      <h3>风电运维 Agent 的核心挑战</h3>
       <ul>
-        <li>单体 Agent 改为七层架构，职责边界清晰</li>
-        <li>数据层先改写与结构化，再交给大模型</li>
-        <li>记忆层沉淀长期画像、短期上下文和执行轨迹</li>
-        <li>Planner 拆任务，Executor 严格调工具</li>
-        <li>Hybrid RAG + 工具高可用 + 反馈飞轮</li>
+        <li><b>误判成本高</b>：一次错误建议可能扩大停机、损坏部件或触发安全风险</li>
+        <li><b>上下文极碎片化</b>：故障码、CMS 曲线、SOP、工单、备件和气象分散在不同系统</li>
+        <li><b>安全边界硬</b>：登塔、开柜、复位、启停机都不能只靠模型自行判断</li>
+        <li><b>知识会过期</b>：机型改造、参数整定、临时限电和现场经验都需要版本治理</li>
       </ul>
     </div>
     <div class="card good">
-      <h3>面向风电运维的关键变化</h3>
+      <h3>对应的技术路线</h3>
       <ul>
-        <li>聚焦“故障定位 + 处置指导 + 工单闭环”</li>
-        <li>知识源覆盖 SOP、故障码、图纸、历史工单、厂家手册</li>
-        <li>工具覆盖 CMS、EAM、备件、气象、告警平台</li>
-        <li>输出聚焦 MTTR、可利用率、安全合规和备件效率</li>
+        <li>七层架构拆开数据、记忆、规划、工具、安全和反馈职责</li>
+        <li>数据层先把现场口语、故障码、设备实体和时间窗结构化</li>
+        <li>LLM Wiki 组织手册、SOP、工单、图纸和备件证据</li>
+        <li>Planner 拆诊断路径，Executor 严格按权限和安全票调用工具</li>
       </ul>
     </div>
   </div>
   <table>
-    <tr><th>原 01_lecture1 模块</th><th>风电运维改造模块</th><th>目标</th></tr>
+    <tr><th>基础能力模块</th><th>风电运维改造模块</th><th>目标</th></tr>
     <tr><td>业务层：问答 / 提醒 / 任务流</td><td>告警研判 / 故障诊断 / 检修指导 / 工单生成 / 复盘</td><td>让助手能真正指导现场作业</td></tr>
     <tr><td>数据层：Query 改写</td><td>故障语义标准化 + 设备实体对齐 + 风况/运行状态注入</td><td>减少误判与检索偏差</td></tr>
     <tr><td>记忆层：用户画像</td><td>风机画像 + 故障画像 + 班组经验记忆</td><td>形成场站级经验沉淀</td></tr>
-    <tr><td>Hybrid RAG</td><td>故障码、手册、SOP、历史工单、图纸多源检索</td><td>答案有依据、可追溯</td></tr>
+    <tr><td>LLM Wiki</td><td>故障码、手册、SOP、历史工单、图纸多源知识组织</td><td>答案有依据、可追溯</td></tr>
     <tr><td>反馈层</td><td>工单结果、复发率、停机时长、专家复核</td><td>形成运维知识飞轮</td></tr>
   </table>
   <div class="page-num">2</div>
@@ -131,10 +130,10 @@ tr:nth-child(even) td { background: #f8fafc; }
 
 <!-- Slide 3: 项目背景 -->
 <section class="slide">
-  <h2>1. 项目背景：风电运维的特殊性</h2>
+  <h2>1. 项目背景：风电运维的问题与挑战</h2>
   <div class="two-col">
     <div class="card bad">
-      <h3>普通问答 Agent 的三大问题</h3>
+      <h3>普通问答 Agent 的三大失效点</h3>
       <ul>
         <li><b>只会解释，不会闭环</b>：能解释故障码，但不会拉运行曲线、查备件、生成工单</li>
         <li><b>知识不接地</b>：没有机型、部件、现场环境和历史检修上下文</li>
@@ -142,7 +141,7 @@ tr:nth-child(even) td { background: #f8fafc; }
       </ul>
     </div>
     <div class="card good">
-      <h3>风电场景的工业级要求</h3>
+      <h3>必须正面解决的工程挑战</h3>
       <ul>
         <li><b>时效性</b>：告警后要快速判断继续观察、远程诊断、建议复位、限功率建议还是派工</li>
         <li><b>准确性</b>：不能编造故障原因、备件型号、操作步骤</li>
@@ -153,6 +152,13 @@ tr:nth-child(even) td { background: #f8fafc; }
   </div>
   <h3 style="margin-top:20px">项目目标</h3>
   <div class="q">构建一个能处理“告警解释 + 故障定位 + 检修步骤推荐 + 备件/工具准备 + 工单闭环 + 复盘学习”的工业级风电运维智导 Agent。</div>
+  <div class="card warn" style="margin-top:10px;">
+    <h3>问题不是“能不能回答”，而是“能不能安全落地”</h3>
+    <ul>
+      <li>没有实时数据，答案可能过时；没有版本化知识，SOP 可能错用；没有安全门，建议可能越权。</li>
+      <li>所以技术路线必须从“模型能力展示”升级为“诊断证据链 + 权限边界 + 工单闭环”。</li>
+    </ul>
+  </div>
   <div class="hl-must">
     关键定位：LLM 只能“告诉你可能怎么做”；运维 Agent 必须“拿实时数据、查规程、拆任务、形成建议、留下工单证据”。风电场景不能只做聊天助手，必须做可审计的人机协同作业辅助系统。
   </div>
@@ -188,7 +194,7 @@ tr:nth-child(even) td { background: #f8fafc; }
 
       <rect x="40" y="220" width="920" height="50" rx="8" fill="url(#lg1)"/>
       <text x="60" y="250" fill="white" font-size="16" font-weight="bold">④ 模型应用层 core/</text>
-      <text x="300" y="250" fill="white" font-size="14">Planner · 诊断 Agent · RAG · 风险校验 · Prompt Routing</text>
+      <text x="300" y="250" fill="white" font-size="14">Planner · 诊断 Agent · LLM Wiki · 风险校验 · Prompt Routing</text>
 
       <rect x="40" y="280" width="920" height="50" rx="8" fill="url(#lg3)"/>
       <text x="60" y="310" fill="white" font-size="16" font-weight="bold">⑤ 工具层 tools/</text>
@@ -284,7 +290,7 @@ result = executor.run(plan)</div>
       <h3>为什么必须前置改写</h3>
       <ul>
         <li>现场口语和厂家术语不一致：变桨 24V、pitch 24V、控制柜低压可能指向同一类问题</li>
-        <li>风机编号、部件、告警码、时间窗缺一项，RAG 和工具调用都会漂移</li>
+        <li>风机编号、部件、告警码、时间窗缺一项，LLM Wiki 和工具调用都会漂移</li>
         <li>风况、功率、转速、温度、电压等实时状态决定诊断路径</li>
       </ul>
     </div>
@@ -498,7 +504,7 @@ trace.store(case_id, plan, tool_calls, expert_feedback, work_order_result)</div>
       <text x="312" y="100" text-anchor="middle" font-size="16" font-weight="bold" fill="#115e59">Planner Agent</text>
       <text x="312" y="122" text-anchor="middle" font-size="12" fill="#115e59">低温度 · 只输出结构化计划</text>
       <text x="312" y="154" text-anchor="middle" font-size="11" fill="#475569">输入：结构化 Case</text>
-      <text x="312" y="174" text-anchor="middle" font-size="11" fill="#475569">+ 风机画像 + RAG 证据</text>
+      <text x="312" y="174" text-anchor="middle" font-size="11" fill="#475569">+ 风机画像 + LLM Wiki 证据</text>
       <text x="312" y="204" text-anchor="middle" font-size="11" fill="#475569">输出：steps / tools / risk</text>
       <text x="312" y="224" text-anchor="middle" font-size="11" fill="#475569">+ 所需权限 + 终止条件</text>
       <path d="M 430 170 L 475 170" stroke="#475569" stroke-width="2" marker-end="url(#c)"/>
@@ -589,7 +595,7 @@ Action Input: 3号机 24V
     def run(case):
         case = data_layer.normalize(case)
         memory_ctx = memory_router.build(case)
-        evidence = rag.retrieve(case, memory_ctx)
+        evidence = llm_wiki.lookup(case, memory_ctx)
         plan = planner.plan(case, evidence)
         safe_plan = safety_gate.validate(plan)
         result = executor.execute(safe_plan)
@@ -597,9 +603,9 @@ Action Input: 3号机 24V
   <div class="page-num">14</div>
 </section>
 
-<!-- Slide 15: RAG -->
+<!-- Slide 15: LLM Wiki -->
 <section class="slide">
-  <h2>5. 混合 RAG · 单一向量检索不适合故障诊断</h2>
+  <h2>5. LLM Wiki · 单一向量检索不适合故障诊断</h2>
   <div class="two-col">
     <div class="card bad">
       <h3>只用向量检索的问题</h3>
@@ -610,7 +616,7 @@ Action Input: 3号机 24V
       </ul>
     </div>
     <div class="card good">
-      <h3>三层漏斗改造</h3>
+      <h3>三层知识组织</h3>
       <ul>
         <li><b>L1 语义缓存</b>：高频故障问答、标准 SOP、常见告警解释</li>
         <li><b>L2 混合召回</b>：BM25 精确匹配 + 向量语义召回 + 图谱邻接</li>
@@ -618,13 +624,21 @@ Action Input: 3号机 24V
       </ul>
     </div>
   </div>
-  <div class="q">风电 RAG 的核心不是“找相似文本”，而是“找到可执行、可追溯、符合机型和安全条件的证据”。</div>
+  <div class="card warn" style="margin-top:10px;">
+    <h3>LLM Wiki 要解决的真实挑战</h3>
+    <ul>
+      <li><b>证据优先级</b>：厂家手册、场站 SOP、专家经验、历史工单不能同权。</li>
+      <li><b>版本一致性</b>：同一故障在不同机型、控制器版本、技改状态下处理路径不同。</li>
+      <li><b>可审计输出</b>：每条建议都要能反查知识源、适用条件和引用时间。</li>
+    </ul>
+  </div>
+  <div class="q">风电 LLM Wiki 的核心不是“找相似文本”，而是“组织可执行、可追溯、符合机型和安全条件的证据”。</div>
   <div class="page-num">15</div>
 </section>
 
-<!-- Slide 16: RAG Funnel -->
+<!-- Slide 16: LLM Wiki -->
 <section class="slide">
-  <h2>5.1 风电 Hybrid RAG 三层漏斗</h2>
+  <h2>5.1 风电 LLM Wiki 三层知识组织</h2>
   <div class="svg-wrap">
     <svg viewBox="0 0 1000 360" xmlns="http://www.w3.org/2000/svg">
       <defs><marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 Z" fill="#475569"/></marker></defs>
@@ -704,7 +718,7 @@ def build_remote_reset_suggestion(turbine_id, fault_code):
 <!-- Slide 18: 模型路由 -->
 <section class="slide">
   <h2>7. 模型层 · 训推分离的风电模型路由</h2>
-  <div class="q">原课件的模型路由思想保留，但风电场景要把“简单 FAQ、复杂诊断、时序异常、多模态巡检、专家评分”拆开，不能所有请求都走一个大模型。</div>
+  <div class="q">模型路由要面向风电场景，把“简单 FAQ、复杂诊断、时序异常、多模态巡检、专家评分”拆开，不能所有请求都走一个大模型。</div>
   <table>
     <tr><th>任务类型</th><th>推荐模型/模块</th><th>触发场景</th><th>原因</th></tr>
     <tr><td>标准 FAQ / 故障码解释</td><td>小模型 + 语义缓存</td><td>“303804 是什么故障”</td><td>高频、低风险、低延迟</td></tr>
@@ -737,7 +751,7 @@ def build_remote_reset_suggestion(turbine_id, fault_code):
       <text x="388" y="137" text-anchor="middle" font-size="12" font-weight="bold" fill="#92400e">记忆层</text>
       <text x="388" y="155" text-anchor="middle" font-size="10" fill="#78350f">风机/故障画像</text>
       <rect x="315" y="180" width="145" height="50" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
-      <text x="388" y="202" text-anchor="middle" font-size="12" font-weight="bold" fill="#92400e">RAG</text>
+      <text x="388" y="202" text-anchor="middle" font-size="12" font-weight="bold" fill="#92400e">LLM Wiki</text>
       <text x="388" y="220" text-anchor="middle" font-size="10" fill="#78350f">手册/SOP/工单</text>
       <path d="M 465 75 L 505 130" stroke="#475569" stroke-width="2" marker-end="url(#f)"/>
       <path d="M 465 140 L 505 145" stroke="#475569" stroke-width="2" marker-end="url(#f)"/>
@@ -801,11 +815,11 @@ def build_remote_reset_suggestion(turbine_id, fault_code):
 
 <!-- Slide 21: 落地路线 -->
 <section class="slide">
-  <h2>10. 落地实施路线：每一步都对应原课件模块</h2>
+  <h2>10. 落地实施路线：按能力模块分阶段建设</h2>
   <table>
-    <tr><th>阶段</th><th>建设内容</th><th>对应 01_lecture1 模块</th><th>验收标准</th></tr>
-    <tr><td>Phase 0</td><td>梳理机型、故障码、SOP、历史工单、运行数据点位字典</td><td>数据层 / RAG 数据准备</td><td>知识源版本化，点位和部件实体可对齐</td></tr>
-    <tr><td>Phase 1</td><td>做只读问答：故障码解释、SOP 检索、引用证据</td><td>Hybrid RAG 三层漏斗</td><td>关键结论引用率 &gt;90%，无编造手册条款</td></tr>
+    <tr><th>阶段</th><th>建设内容</th><th>对应能力模块</th><th>验收标准</th></tr>
+    <tr><td>Phase 0</td><td>梳理机型、故障码、SOP、历史工单、运行数据点位字典</td><td>数据层 / LLM Wiki 数据准备</td><td>知识源版本化，点位和部件实体可对齐</td></tr>
+    <tr><td>Phase 1</td><td>做只读问答：故障码解释、SOP 检索、引用证据</td><td>LLM Wiki 三层知识组织</td><td>关键结论引用率 &gt;90%，无编造手册条款</td></tr>
     <tr><td>Phase 2</td><td>接入 CMS/告警平台，形成结构化故障 Case</td><td>Query 改写 / 数据层前置</td><td>风机、部件、故障码、时间窗自动识别</td></tr>
     <tr><td>Phase 3</td><td>引入 Planner + Executor，辅助生成诊断路径、证据清单和工单草稿</td><td>Plan-and-Execute / Tool Calling</td><td>多步任务可解释，控制类动作只给建议不直连执行</td></tr>
     <tr><td>Phase 4</td><td>建设四层记忆，沉淀风机画像和故障经验</td><td>Mem0 / OpenClaw / Hermes 融合记忆</td><td>相似故障召回准确，临时状态不过期污染</td></tr>
@@ -820,7 +834,7 @@ def build_remote_reset_suggestion(turbine_id, fault_code):
   <div class="three-col">
     <div class="card">
       <h3>① 分层即可控</h3>
-      <p>风电运维不能靠一个 Prompt 包打天下，要把实时数据、知识检索、工具执行、安全审计拆成独立层。</p>
+      <p>风电运维不能靠一个 Prompt 包打天下，要把实时数据、LLM Wiki 知识组织、工具执行、安全审计拆成独立层。</p>
     </div>
     <div class="card">
       <h3>② 前置即准确</h3>
@@ -848,6 +862,7 @@ def build_remote_reset_suggestion(turbine_id, fault_code):
     <span class="chip">工单闭环</span>
     <span class="chip">知识飞轮</span>
   </div>
+  <div class="meta">设计人：郝帅</div>
 </section>
 
 </div>

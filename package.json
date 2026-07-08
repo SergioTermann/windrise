@@ -37,6 +37,11 @@
     "smoke:llmwiki": "node scripts/smoke-llmwiki.mjs",
     "smoke:doc-knowledge": "node scripts/smoke-doc-knowledge.mjs",
     "smoke:wind-llmwiki": "node scripts/smoke-wind-llmwiki.mjs",
+    "test": "node --test windops/tests/*.test.mjs",
+    "test:windops": "node --test windops/tests/*.test.mjs",
+    "test:windops-unit": "node --test windops/tests/domain.test.mjs windops/tests/data.test.mjs windops/tests/memory.test.mjs windops/tests/core.test.mjs windops/tests/tools.test.mjs windops/tests/models.test.mjs windops/tests/business.test.mjs windops/tests/orchestrator.test.mjs",
+    "test:windops-api": "node --test windops/tests/api.test.mjs",
+    "test:windops-architecture": "node windops/test-architecture.mjs",
     "smoke:skills": "node scripts/smoke-skills.mjs",
     "version:packed": "node scripts/run-packed-claude.mjs --version",
     "version:built": "node dist/claude.js --version"

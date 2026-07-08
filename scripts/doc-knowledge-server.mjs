@@ -8,6 +8,13 @@ import { basename, extname, join, normalize, relative, resolve, sep } from 'path
 import { networkInterfaces } from 'os'
 import { fileURLToPath } from 'url'
 import { promisify } from 'util'
+import {
+  createWindriseMem0Memory,
+  buildWindOpsArchitectureContext,
+  buildWindOpsArchitecturePayload,
+  buildWindOpsSystemInstruction,
+  isWindOpsDomainQuery,
+} from '../windops/index.mjs'
 
 const execFileAsync = promisify(execFile)
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
@@ -44,6 +51,7 @@ const MAX_UPLOAD_BYTES = Number.parseInt(
   process.env.DOC_KNOWLEDGE_MAX_UPLOAD_BYTES || String(200 * 1024 * 1024),
   10,
 )
+const mem0Memory = createWindriseMem0Memory({ service: 'doc-knowledge-server' })
 
 await mkdir(UPLOAD_DIR, { recursive: true })
 await mkdir(OUT_DIR, { recursive: true })
@@ -58,7 +66,7 @@ const server = createServer(async (req, res) => {
       return serveRootFile('simple_home.html', res)
     }
     if (req.method === 'GET' && url.pathname === '/health') {
-      return sendJson(res, { ok: true })
+      return sendJson(res, { ok: true, mem0: mem0Memory.status() })
     }
     if (req.method === 'GET' && url.pathname === '/admin') {
       return sendAdminPage(res)
@@ -273,24 +281,30 @@ async function handleChat(req, res) {
   if (!message) return sendText(res, 400, 'Missing message')
   const conversationId = sanitizeConversationId(data.conversation_id) || newConversationId()
   const session = await getChatSession(conversationId)
+  session.mem0Context = await mem0Memory.searchContext(message, { conversationId })
   const reasoning = buildLlmWikiReasoningPayload(message, session)
+  const architectureSeed = buildServiceWindOpsArchitecture(message, session)
   const hazardAnswer = highRiskOperationGuardrail(message, reasoning)
   if (hazardAnswer) {
-    await rememberChatTurn(conversationId, session, message, hazardAnswer, reasoning)
+    const windopsArchitecture = buildServiceWindOpsArchitecture(message, session, hazardAnswer, architectureSeed)
+    await rememberChatTurn(conversationId, session, message, hazardAnswer, reasoning, windopsArchitecture)
     return sendJson(res, {
       answer: hazardAnswer,
       conversation_id: conversationId,
       reasoning,
+      windops_architecture: windopsArchitecture,
     })
   }
   const generalAnswer = deterministicGeneralConversationAnswer(message, session)
   if (generalAnswer) {
     const answer = prepareChatAnswer(message, generalAnswer, reasoning, { mode: 'general', session })
-    await rememberChatTurn(conversationId, session, message, answer, reasoning)
+    const windopsArchitecture = buildServiceWindOpsArchitecture(message, session, answer, architectureSeed)
+    await rememberChatTurn(conversationId, session, message, answer, reasoning, windopsArchitecture)
     return sendJson(res, {
       answer,
       conversation_id: conversationId,
       reasoning,
+      windops_architecture: windopsArchitecture,
     })
   }
   const pdfAnswer = deterministicPdfQaAnswer(message)
@@ -307,11 +321,13 @@ async function handleChat(req, res) {
     const knowledgeAnswer = await answerExplicitFaultCodeFromLlmWiki(message)
     if (knowledgeAnswer) {
       const answer = prepareChatAnswer(message, knowledgeAnswer, reasoning, { mode: 'field', session })
-      await rememberChatTurn(conversationId, session, message, answer, reasoning)
+      const windopsArchitecture = buildServiceWindOpsArchitecture(message, session, answer, architectureSeed)
+      await rememberChatTurn(conversationId, session, message, answer, reasoning, windopsArchitecture)
       return sendJson(res, {
         answer,
         conversation_id: conversationId,
         reasoning,
+        windops_architecture: windopsArchitecture,
       })
     }
   }
@@ -320,11 +336,13 @@ async function handleChat(req, res) {
     : ''
   if (contextualAnswer) {
     const answer = prepareChatAnswer(message, contextualAnswer, reasoning, { mode: 'field', session })
-    await rememberChatTurn(conversationId, session, message, answer, reasoning)
+    const windopsArchitecture = buildServiceWindOpsArchitecture(message, session, answer, architectureSeed)
+    await rememberChatTurn(conversationId, session, message, answer, reasoning, windopsArchitecture)
     return sendJson(res, {
       answer,
       conversation_id: conversationId,
       reasoning,
+      windops_architecture: windopsArchitecture,
     })
   }
 
@@ -341,26 +359,30 @@ async function handleChat(req, res) {
       throw new Error('Windrise returned no usable field answer')
     }
     answer = prepareChatAnswer(message, answer, reasoning, { mode: chatRequest.mode, session })
-    await rememberChatTurn(conversationId, session, message, answer, reasoning)
+    const windopsArchitecture = buildServiceWindOpsArchitecture(message, session, answer, architectureSeed)
+    await rememberChatTurn(conversationId, session, message, answer, reasoning, windopsArchitecture)
     sendJson(res, {
       answer,
       conversation_id: conversationId,
       reasoning,
+      windops_architecture: windopsArchitecture,
     })
   } catch (error) {
     console.warn(`Chat request failed in ${chatRequest.mode} mode: ${error.message}`)
     const output = cleanWindriseOutput(`${error.stdout || ''}\n${error.stderr || ''}`)
     const answer = isUsableWindriseAnswer(output)
       ? output
-      : chatRequest.mode === 'general'
-        ? buildGeneralChatFallback(message, session)
-        : buildUnclearAnswerFallback(message, session)
+        : chatRequest.mode === 'general'
+          ? buildGeneralChatFallback(message, session)
+          : buildUnclearAnswerFallback(message, session)
     const preparedAnswer = prepareChatAnswer(message, answer, reasoning, { mode: chatRequest.mode, session })
-    await rememberChatTurn(conversationId, session, message, preparedAnswer, reasoning)
+    const windopsArchitecture = buildServiceWindOpsArchitecture(message, session, preparedAnswer, architectureSeed)
+    await rememberChatTurn(conversationId, session, message, preparedAnswer, reasoning, windopsArchitecture)
     sendJson(res, {
       answer: preparedAnswer,
       conversation_id: conversationId,
       reasoning,
+      windops_architecture: windopsArchitecture,
     })
   }
 }
@@ -550,15 +572,23 @@ async function getChatSession(conversationId) {
     chatSessions.set(conversationId, restored)
     return restored
   }
-  const session = { updatedAt: now, turns: [], memory: emptyChatMemory(), summary: '', lastReasoningRoute: null }
+  const session = {
+    updatedAt: now,
+    turns: [],
+    memory: emptyChatMemory(),
+    summary: '',
+    lastReasoningRoute: null,
+    lastWindOpsArchitecture: null,
+  }
   chatSessions.set(conversationId, session)
   return session
 }
 
-async function rememberChatTurn(conversationId, session, userMessage, assistantAnswer, reasoning = null) {
+async function rememberChatTurn(conversationId, session, userMessage, assistantAnswer, reasoning = null, windopsArchitecture = null) {
   session.updatedAt = Date.now()
   updateChatMemory(session, userMessage, assistantAnswer)
   if (reasoning?.case?.id) session.lastReasoningRoute = normalizeReasoningRoute(reasoning)
+  if (windopsArchitecture?.case?.id) session.lastWindOpsArchitecture = normalizeWindOpsArchitecture(windopsArchitecture)
   session.turns.push({
     user: String(userMessage || '').trim(),
     assistant: String(assistantAnswer || '').trim(),
@@ -570,6 +600,19 @@ async function rememberChatTurn(conversationId, session, userMessage, assistantA
   }
   await persistChatSession(conversationId, session)
   await persistProjectChatMemory(projectChatMemory)
+  await mem0Memory.rememberTurn({
+    conversationId,
+    userMessage,
+    assistantAnswer,
+    metadata: {
+      topic: session.memory?.topic,
+      faultCodes: session.memory?.faultCodes,
+      reasoningCase: reasoning?.case?.id,
+      windOpsCase: windopsArchitecture?.case?.id,
+      windOpsSystem: windopsArchitecture?.case?.system,
+      safetyDecision: windopsArchitecture?.safety_gate?.decision,
+    },
+  })
 }
 
 async function purgeExpiredChatSessions(now = Date.now()) {
@@ -609,7 +652,8 @@ function normalizePersistedChatSession(value) {
   const memory = normalizePersistedChatMemory(value.memory)
   const summary = normalizeSummary(value.summary || value.compactSummary || '')
   const lastReasoningRoute = normalizeReasoningRoute(value.lastReasoningRoute)
-  return { updatedAt, turns, memory, summary, lastReasoningRoute }
+  const lastWindOpsArchitecture = normalizeWindOpsArchitecture(value.lastWindOpsArchitecture)
+  return { updatedAt, turns, memory, summary, lastReasoningRoute, lastWindOpsArchitecture }
 }
 
 function normalizeReasoningRoute(value) {
@@ -630,6 +674,8 @@ function normalizePersistedChatMemory(value) {
   base.topic = String(value.topic || '').slice(0, 120)
   base.userName = normalizeMemoryPhrase(value.userName).slice(0, 24)
   base.favoriteColor = normalizeMemoryPhrase(value.favoriteColor).slice(0, 24)
+  base.windFarmId = String(value.windFarmId || '').slice(0, 12)
+  base.windFarmName = normalizeMemoryPhrase(value.windFarmName).slice(0, 40)
   for (const key of ['vendors', 'models', 'faultCodes', 'systems', 'components', 'symptoms', 'actions', 'pendingFeedback']) {
     if (!Array.isArray(value[key])) continue
     base[key] = value[key]
@@ -640,6 +686,33 @@ function normalizePersistedChatMemory(value) {
   return base
 }
 
+function normalizeWindOpsArchitecture(value) {
+  if (!value || typeof value !== 'object') return null
+  const caseInfo = value.case && typeof value.case === 'object' ? value.case : null
+  if (!caseInfo?.id) return null
+  return {
+    layers: Array.isArray(value.layers) ? value.layers : [],
+    case: {
+      id: String(caseInfo.id || ''),
+      turbineId: String(caseInfo.turbineId || ''),
+      windFarmId: String(caseInfo.windFarmId || ''),
+      windFarmName: String(caseInfo.windFarmName || ''),
+      models: Array.isArray(caseInfo.models) ? caseInfo.models.map(item => String(item || '')).filter(Boolean) : [],
+      system: String(caseInfo.system || ''),
+      component: String(caseInfo.component || ''),
+      faultCode: String(caseInfo.faultCode || ''),
+      timeWindow: String(caseInfo.timeWindow || ''),
+      operatingSignals: Array.isArray(caseInfo.operatingSignals) ? caseInfo.operatingSignals.map(item => String(item || '')).filter(Boolean) : [],
+      safetySignals: Array.isArray(caseInfo.safetySignals) ? caseInfo.safetySignals.map(item => String(item || '')).filter(Boolean) : [],
+      missing: Array.isArray(caseInfo.missing) ? caseInfo.missing.map(item => String(item || '')).filter(Boolean) : [],
+      confidence: Number.isFinite(caseInfo.confidence) ? caseInfo.confidence : 0,
+    },
+    planner: value.planner && typeof value.planner === 'object' ? value.planner : null,
+    safety_gate: value.safety_gate && typeof value.safety_gate === 'object' ? value.safety_gate : null,
+    feedback_loop: value.feedback_loop && typeof value.feedback_loop === 'object' ? value.feedback_loop : null,
+  }
+}
+
 async function persistChatSession(conversationId, session) {
   try {
     const payload = JSON.stringify({
@@ -648,6 +721,7 @@ async function persistChatSession(conversationId, session) {
       memory: session.memory || emptyChatMemory(),
       summary: normalizeSummary(session.summary || ''),
       lastReasoningRoute: normalizeReasoningRoute(session.lastReasoningRoute),
+      lastWindOpsArchitecture: normalizeWindOpsArchitecture(session.lastWindOpsArchitecture),
     }, null, 2)
     const filePath = chatSessionPath(conversationId)
     const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`
@@ -721,6 +795,127 @@ async function persistProjectChatMemory(memory) {
   }
 }
 
+function buildServiceWindOpsArchitecture(message, session = null, answer = '', seed = null) {
+  const isWindOpsTurn =
+    isWindOpsDomainQuery(message) ||
+    diagnosticTurns(session).length > 0 ||
+    looksLikeTroubleshootingAnswer(answer)
+  if (!isWindOpsTurn) return null
+  if (seed && answer) {
+    const inheritedSeed = inheritWindOpsArchitecture(seed, session)
+    const nextPayload = buildWindOpsArchitecturePayload(message, windOpsContextFromSession(session), answer)
+    return {
+      ...inheritedSeed,
+      feedback_loop: alignFeedbackLoopToCase(nextPayload.feedback_loop, inheritedSeed.case),
+    }
+  }
+  return inheritWindOpsArchitecture(
+    buildWindOpsArchitecturePayload(message, windOpsContextFromSession(session), answer),
+    session,
+  )
+}
+
+function alignFeedbackLoopToCase(feedbackLoop, caseInfo = null) {
+  if (!feedbackLoop || !caseInfo) return feedbackLoop
+  return {
+    ...feedbackLoop,
+    workOrderDraftFields: {
+      ...feedbackLoop.workOrderDraftFields,
+      turbineId: caseInfo.turbineId || feedbackLoop.workOrderDraftFields?.turbineId || '待补充',
+      system: caseInfo.system || feedbackLoop.workOrderDraftFields?.system || '待识别',
+      component: caseInfo.component || feedbackLoop.workOrderDraftFields?.component || '待识别',
+      faultCode: caseInfo.faultCode || feedbackLoop.workOrderDraftFields?.faultCode || '待补充',
+      evidenceWindow: caseInfo.timeWindow || feedbackLoop.workOrderDraftFields?.evidenceWindow || '待补充',
+    },
+  }
+}
+
+function windOpsContextFromSession(session = null) {
+  const memory = session?.memory || {}
+  return {
+    windFarmName: memory.windFarmName || '',
+    windFarmId: memory.windFarmId || '',
+    models: Array.isArray(memory.models) ? memory.models : [],
+  }
+}
+
+function buildServiceWindOpsPromptContext(message, session = null) {
+  if (!isWindOpsDomainQuery(message) && !diagnosticTurns(session).length) return ''
+  const architecture = buildServiceWindOpsArchitecture(message, session)
+  if (!architecture?.case) return buildWindOpsArchitectureContext(message, windOpsContextFromSession(session))
+  return [
+    'WindOps 七层架构上下文：',
+    `- 结构化 Case：风机=${architecture.case.turbineId}；风场=${architecture.case.windFarmName || architecture.case.windFarmId}；系统=${architecture.case.system}；部件=${architecture.case.component}；故障码=${architecture.case.faultCode}；时间窗=${architecture.case.timeWindow}；缺失=${architecture.case.missing?.length ? architecture.case.missing.join('、') : '无明显缺口'}；置信度=${architecture.case.confidence}。`,
+    `- Planner：${architecture.planner?.steps?.map(step => `${step.title}[${step.status}]`).join(' -> ') || '待生成'}。`,
+    `- Safety Gate：${architecture.safety_gate?.decision || '待判定'}；校验项=${architecture.safety_gate?.requiredChecks?.join('；') || '待补充'}。`,
+    '- 证据分级：厂家手册/故障码表 > 场站SOP > 专家规则 > 已关闭历史工单 > 未验证经验。',
+    '- 反馈闭环：工单关闭后沉淀根因、措施、备件、复发率和专家复核；临时限电/临时旁路/短期天气影响设置 TTL。',
+  ].join('\n')
+}
+
+function inheritWindOpsArchitecture(architecture, session = null) {
+  const previous = normalizeWindOpsArchitecture(session?.lastWindOpsArchitecture)
+  if (!architecture?.case || !previous?.case) return architecture
+  if (!shouldInheritWindOpsCase(architecture.case, previous.case)) return architecture
+
+  const mergedCase = {
+    ...architecture.case,
+    turbineId: inheritCaseField(architecture.case.turbineId, previous.case.turbineId),
+    windFarmId: inheritCaseField(architecture.case.windFarmId, previous.case.windFarmId),
+    windFarmName: inheritCaseField(architecture.case.windFarmName, previous.case.windFarmName),
+    models: architecture.case.models?.length ? architecture.case.models : previous.case.models || [],
+    system: inheritCaseField(architecture.case.system, previous.case.system),
+    component: inheritCaseField(architecture.case.component, previous.case.component),
+    faultCode: inheritCaseField(architecture.case.faultCode, previous.case.faultCode),
+    timeWindow: inheritCaseField(architecture.case.timeWindow, previous.case.timeWindow),
+    operatingSignals: architecture.case.operatingSignals?.length ? architecture.case.operatingSignals : previous.case.operatingSignals || [],
+    safetySignals: architecture.case.safetySignals?.length ? architecture.case.safetySignals : previous.case.safetySignals || [],
+  }
+  mergedCase.missing = (architecture.case.missing || []).filter(item => !caseFieldSatisfiedByInheritance(item, mergedCase))
+  mergedCase.confidence = Math.max(
+    Number.isFinite(architecture.case.confidence) ? architecture.case.confidence : 0,
+    Math.min(0.95, (Number.isFinite(previous.case.confidence) ? previous.case.confidence : 0) - 0.05),
+  )
+  mergedCase.id = architecture.case.id === 'case:unclassified' ? previous.case.id : architecture.case.id
+
+  return {
+    ...architecture,
+    case: mergedCase,
+    planner: {
+      ...architecture.planner,
+      steps: (architecture.planner?.steps || []).map(step =>
+        step.id === 'normalize_case' && !mergedCase.missing.length
+          ? { ...step, status: 'ready', action: `沿用上一轮Case：风机=${mergedCase.turbineId}、系统=${mergedCase.system}、部件=${mergedCase.component}。` }
+          : step.id === 'retrieve_evidence' && mergedCase.system !== '待识别'
+            ? { ...step, status: 'ready' }
+            : step,
+      ),
+    },
+  }
+}
+
+function shouldInheritWindOpsCase(currentCase, previousCase) {
+  if (!previousCase || previousCase.system === '待识别') return false
+  return currentCase.id === 'case:unclassified' ||
+    currentCase.turbineId === '待补充' ||
+    currentCase.system === '待识别' ||
+    currentCase.component === '待识别'
+}
+
+function inheritCaseField(current, previous) {
+  return current && !['待补充', '待识别', ''].includes(current) ? current : previous || current
+}
+
+function caseFieldSatisfiedByInheritance(missingItem, caseInfo) {
+  if (/风机ID/.test(missingItem)) return caseInfo.turbineId && caseInfo.turbineId !== '待补充'
+  if (/风场|机型/.test(missingItem)) return (caseInfo.windFarmId && caseInfo.windFarmId !== '待补充') || caseInfo.models?.length
+  if (/系统|部件/.test(missingItem)) return caseInfo.system !== '待识别' && caseInfo.component !== '待识别'
+  if (/故障码|明确现象/.test(missingItem)) return caseInfo.faultCode !== '待补充' || caseInfo.system !== '待识别'
+  if (/运行时间窗/.test(missingItem)) return caseInfo.timeWindow && caseInfo.timeWindow !== '待补充'
+  if (/运行状态|SCADA|CMS/.test(missingItem)) return caseInfo.operatingSignals?.length
+  return false
+}
+
 function buildConversationRequest(message, session) {
   const text = String(message || '').trim()
   if (shouldUseFieldTroubleshootingPrompt(text, session)) {
@@ -746,12 +941,14 @@ function buildGeneralConversationMessages(message, session) {
   const diagnosticContext = recentDiagnosticConversationContext(session)
   const context = diagnosticContext || recentConversationContext(session)
   const memoryContext = renderClaudeLikeMemoryContext(session)
+  const windOpsArchitectureContext = buildServiceWindOpsPromptContext(text, session)
   return [
     {
       role: 'system',
       content: [
-        '你是 Windrise，一个正常的中文大模型助手。',
+        windOpsArchitectureContext ? buildWindOpsSystemInstruction() : '你是 Windrise，一个正常的中文大模型助手。',
         currentRuntimeContextLine(),
+        windOpsArchitectureContext ? `WindOps 后端架构上下文：\n${windOpsArchitectureContext}` : '',
         memoryContext ? `长期和压缩记忆：\n${memoryContext}` : '',
         '你需要结合前面的对话自然回答，像普通聊天助手一样理解上下文。',
         diagnosticContext ? '如果最近对话里有风机故障排查内容，请延续那个话题，不要重新开题。' : '',
@@ -1034,12 +1231,15 @@ function shouldShowAlternativeCase(primaryLabel, alternativeLabel) {
 function buildFieldTroubleshootingMessages(message, session) {
   const text = String(message || '').trim()
   const memory = renderClaudeLikeMemoryContext(session)
+  const windOpsArchitectureContext = buildServiceWindOpsPromptContext(text, session)
   return [
     {
       role: 'system',
       content: [
+        buildWindOpsSystemInstruction(),
         '你是资深风电现场检修工程师。',
         currentRuntimeContextLine(),
+        windOpsArchitectureContext ? `WindOps 后端架构上下文：\n${windOpsArchitectureContext}` : '',
         '请结合前面对话理解用户当前输入，按现场机械/电气工程师能看懂的话回答。',
         memory ? `已整理的现场信息：\n${memory}` : '',
         '不要用 IT、AI 或软件工程口吻。',
@@ -2307,7 +2507,7 @@ function deterministicContextualAnswer(message, session) {
 function deterministicGenericWindAnswer(text) {
   const faultCodeAnswer = deterministicFaultCodeAnswer(text)
   if (faultCodeAnswer) return faultCodeAnswer
-  const rule = genericWindRules().find(item => item.pattern.test(text))
+  const rule = selectGenericWindRule(text)
   if (!rule) return ''
   if (
     !/(怎么办|怎么处理|如何处理|处理方法|处置|排查|检查|检修|维修|下一步|接下来|继续|后续|怎么修|如何修|怎么判断|如何判断|判断)/i.test(text) &&
@@ -2513,7 +2713,7 @@ function deterministicGenericWindFollowUpAnswer(text, session) {
 }
 
 function detectsDifferentGenericWindRule(text, currentRule) {
-  const matched = genericWindRules().find(item => item.pattern.test(text))
+  const matched = selectGenericWindRule(text)
   return !!matched && matched.label !== currentRule.label
 }
 
@@ -2883,7 +3083,29 @@ function findRecentGenericWindRule(session) {
   const context = recentDiagnosticConversationContext(session)
   const memory = renderChatMemory(session)
   const combined = `${memory}\n${context}`
-  return genericWindRules().find(rule => rule.pattern.test(combined))
+  return selectGenericWindRule(combined)
+}
+
+function selectGenericWindRule(text) {
+  const matched = genericWindRules().filter(rule => rule.pattern.test(String(text || '')))
+  if (!matched.length) return null
+  return matched.sort((a, b) => genericRuleSpecificityScore(b, text) - genericRuleSpecificityScore(a, text))[0]
+}
+
+function genericRuleSpecificityScore(rule, text) {
+  const source = String(text || '')
+  let score = 0
+  const label = String(rule?.label || '')
+  const pattern = String(rule?.pattern || '')
+  score += Math.min(80, label.length * 2)
+  score += Math.min(60, pattern.length / 4)
+  if (/24\s*V|变桨|安全链|直流母线|齿轮箱|发电机轴承|主轴|水冷|通信|箱变/.test(label + pattern)) score += 80
+  if (/变桨.*24\s*V|24\s*V.*变桨/i.test(source) && /变桨.*24\s*V|24\s*V.*变桨|变桨.*主电源|变桨.*开关反馈|变桨.*控制电源/i.test(pattern)) score += 300
+  if (/齿轮箱|齿轮油|油温|滤芯/i.test(source) && /齿轮箱|齿轮油|油温|滤芯/i.test(pattern)) score += 220
+  if (/安全链|急停|安全继电器/i.test(source) && /安全链|急停|安全继电器/i.test(pattern)) score += 220
+  if (/通信|通讯|CAN|Profibus|EtherCAT|掉线/i.test(source) && /通信|通讯|CAN|Profibus|EtherCAT|掉线/i.test(pattern)) score += 220
+  if (/传感器|测量.*跳变|跳变|漂移/i.test(pattern) && /(变桨|齿轮箱|发电机|主轴|安全链|通信|箱变|水冷)/i.test(source)) score -= 120
+  return score
 }
 
 function diagnosticTurns(session) {
@@ -3115,7 +3337,7 @@ function mergeProfileMemory(projectProfile, sessionMemory) {
   for (const key of ['vendors', 'models', 'faultCodes', 'systems', 'components', 'symptoms', 'actions', 'pendingFeedback']) {
     addUnique(merged[key], current[key] || [], MAX_CHAT_MEMORY_ITEMS)
   }
-  for (const key of ['topic', 'userName', 'favoriteColor']) {
+  for (const key of ['topic', 'userName', 'favoriteColor', 'windFarmId', 'windFarmName']) {
     if (current[key]) merged[key] = current[key]
   }
   return merged
@@ -3193,8 +3415,10 @@ function renderClaudeLikeMemoryContext(session) {
   const sections = []
   const projectMemory = renderProjectChatMemory(projectChatMemory)
   const sessionMemory = renderChatMemory(session)
+  const mem0Context = String(session?.mem0Context || '').trim()
   const summary = normalizeSummary(session?.summary || '')
   if (projectMemory) sections.push(`项目记忆：\n${projectMemory}`)
+  if (mem0Context) sections.push(`mem0 长期记忆：\n${mem0Context}`)
   if (sessionMemory) sections.push(`本轮会话记忆：\n${sessionMemory}`)
   if (summary) sections.push(`压缩摘要：${summary}`)
   return sections.join('\n\n').slice(-6000)
@@ -3230,6 +3454,8 @@ function emptyChatMemory() {
     topic: '',
     userName: '',
     favoriteColor: '',
+    windFarmId: '',
+    windFarmName: '',
     vendors: [],
     models: [],
     faultCodes: [],
@@ -3329,6 +3555,11 @@ function updateChatMemory(session, userMessage, assistantAnswer) {
 function updateGeneralChatMemory(memory, userMessage) {
   const text = String(userMessage || '').trim()
   if (isMemoryRecallQuestion(text)) return
+  const windFarmMatch = text.match(/(\d{1,2})\s*号?\s*风[场厂]|风[场厂]\s*(\d{1,2})/)
+  if (windFarmMatch) {
+    memory.windFarmId = String(windFarmMatch[1] || windFarmMatch[2] || '').slice(0, 12)
+    if (!memory.windFarmName && memory.windFarmId) memory.windFarmName = `${memory.windFarmId}号风场`
+  }
   const nameMatch = text.match(/(?:我叫|我的名字(?:是|叫)?|叫我)\s*([^，,。.!！?？\s]{1,24})/)
   if (nameMatch?.[1]) memory.userName = normalizeMemoryPhrase(nameMatch[1]).slice(0, 24)
   const colorMatch = text.match(/我(?:喜欢|最喜欢|爱)\s*([^，,。.!！?？\s]{1,16})(?:色|颜色)?/)
@@ -3345,6 +3576,7 @@ function renderChatMemory(session) {
     memory.topic ? `主题：${memory.topic}` : '',
     memory.userName ? `用户称呼：${memory.userName}` : '',
     memory.favoriteColor ? `用户偏好颜色：${memory.favoriteColor}` : '',
+    memory.windFarmId ? `风场：${memory.windFarmName || `${memory.windFarmId}号风场`}` : '',
     memory.faultCodes?.length ? `故障码：${memory.faultCodes.join('、')}` : '',
     memory.vendors?.length ? `厂家：${memory.vendors.join('、')}` : '',
     memory.models?.length ? `机型：${memory.models.join('、')}` : '',
