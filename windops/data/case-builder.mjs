@@ -11,10 +11,15 @@ import {
   extractTurbineId,
   extractWindFarmId,
 } from './fault-query-rewriter.mjs'
+import { normalizeTerms } from './term-map.mjs'
 
 export function buildWindOpsCase(query, context = {}) {
   const text = String(query || '')
-  const matchedSystem = SYSTEM_RULES.find(rule => rule.pattern.test(text))
+  const normalized = normalizeTerms(text)
+  // 先用原文匹配系统，未命中时用术语归一后的文本兜底。
+  const matchedSystem =
+    SYSTEM_RULES.find(rule => rule.pattern.test(text)) ||
+    SYSTEM_RULES.find(rule => rule.pattern.test(normalized.canonicalText))
   const turbineId = extractTurbineId(text)
   const faultCode = extractFaultCode(text)
   const windFarmId = extractWindFarmId(text) || context.windFarmId || ''
@@ -40,6 +45,8 @@ export function buildWindOpsCase(query, context = {}) {
     models: Array.isArray(context.models) ? context.models : [],
     system: matchedSystem?.system || '待识别',
     component: matchedSystem?.component || '待识别',
+    terms: normalized.terms,
+    vendors: normalized.vendors,
     faultCode: faultCode || '待补充',
     timeWindow,
     operatingSignals,

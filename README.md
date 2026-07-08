@@ -78,14 +78,15 @@ export WINDRISE_MEM0_TOP_K=5
 ```text
 windops/                    风电运维七层架构（目录即分层）
   business/                 ① 业务层：系统指令、意图路由
-  data/                     ② 数据层：FaultQueryRewriter、结构化 Case
-  memory/                   ③ 记忆层：四层记忆 + Memory Router + mem0 适配
+  data/                     ② 数据层：FaultQueryRewriter、结构化 Case、厂家/术语同义映射
+  memory/                   ③ 记忆层：四层记忆 + Memory Router + mem0 + 工作记忆(TTL/置信度衰减)
   core/                     ④ 模型应用层：Planner、Safety Gate、编排器
-  tools/                    ⑤ 工具层：ToolRegistry（权限/超时/降级）
-  models/                   ⑥ 模型层：任务路由、证据分级
-  feedback/                 ⑦ 反馈层：工单闭环、调用轨迹 TraceLogger
+  tools/                    ⑤ 工具层：ToolRegistry + Executor(重试/超时/柔性降级/安全门)
+  models/                   ⑥ 模型层：任务路由、证据分级、L1 语义缓存
+  feedback/                 ⑦ 反馈层：工单闭环、TraceLogger、审核池(轨迹落库/治理)
+  tests/                    七层单元 + HTTP 集成测试（102 项）
   index.mjs                 七层统一入口
-  test-architecture.mjs     七层架构与集成测试
+  test-architecture.mjs     七层架构快照测试
 src/commands/llmwiki/       LLMWiki 命令、查询、trace 和知识证据排序
 src/skills/bundled/         风电故障诊断与工单生成内置技能
 scripts/windrise-chat.mjs   本地聊天入口（消费 windops/ 七层架构）

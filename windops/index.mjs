@@ -27,11 +27,13 @@ export {
   extractSafetySignals,
 } from './data/fault-query-rewriter.mjs'
 export { buildWindOpsCase } from './data/case-builder.mjs'
+export { normalizeTerms, TERM_SYNONYMS, VENDOR_TERMS } from './data/term-map.mjs'
 
 // ③ 记忆层
 export { detectWindOpsWorkPhase, WORK_PHASE_BUDGET } from './memory/work-phase.mjs'
 export { buildWindOpsMemoryRouter } from './memory/memory-router.mjs'
 export { createWindriseMem0Memory } from './memory/mem0-adapter.mjs'
+export { createWorkingMemory, decayConfidence } from './memory/working-memory.mjs'
 
 // ④ 模型应用层
 export { buildWindOpsPlanner, EVIDENCE_PRIORITY } from './core/planner.mjs'
@@ -51,11 +53,20 @@ export {
   listToolsByRisk,
   validateToolCall,
 } from './tools/tool-registry.mjs'
+export {
+  runTool,
+  withEnterpriseRetry,
+  safetyRequired,
+  applyFallbackStrategy,
+  ToolTimeoutError,
+} from './tools/executor.mjs'
 
 // ⑥ 模型层
 export { routeWindOpsModel, MODEL_ROUTES } from './models/model-router.mjs'
 export { gradeEvidence, EVIDENCE_TIERS, evidencePriorityLabels } from './models/evidence-grader.mjs'
+export { createSemanticCache, buildCacheKey } from './models/semantic-cache.mjs'
 
 // ⑦ 反馈层
 export { buildWindOpsFeedbackLoop, extractFeedbackItems } from './feedback/feedback-loop.mjs'
 export { buildWindOpsTrace } from './feedback/trace-logger.mjs'
+export { createReviewPool } from './feedback/review-pool.mjs'
