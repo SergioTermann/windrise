@@ -14,10 +14,24 @@ export const EVIDENCE_PRIORITY = [
   '未验证经验',
 ]
 
-export function buildWindOpsPlanner(caseInfo, query = '', context = {}) {
+// evidence（可选）：LLM Wiki 检索结果与巡检识图结果，用于把证据/备件/缺陷落进计划步骤。
+// { citations:[{tier,snippet}], partsAndPoints:{parts,points}, inspection:{defects,highestSeverity} }
+export function buildWindOpsPlanner(caseInfo, query = '', context = {}, evidence = null) {
   const faultCase = caseInfo || buildWindOpsCase(query, context)
   const memoryRouter = buildWindOpsMemoryRouter(faultCase, query, context)
   const shouldSearchKnowledge = faultCase.faultCode !== '待补充' || faultCase.system !== '待识别'
+  const citations = evidence?.citations || []
+  const parts = evidence?.partsAndPoints?.parts || []
+  const points = evidence?.partsAndPoints?.points || []
+  const inspectionDefects = evidence?.inspection?.defects || []
+  // 检索步骤：有真实证据时落地引用/备件/测点，否则回到静态提示。
+  const retrieveAction = citations.length
+    ? `已检索命中 ${citations.length} 条证据（最高级：${citations[0].tier}「${citations[0].snippet}」）；` +
+      (parts.length ? `建议准备备件：${parts.map(p => p.name).join('、')}；` : '') +
+      (points.length ? `建议拉取点位：${points.map(p => p.name).join('、')}趋势。` : '建议拉取CMS/SCADA相关趋势。')
+    : shouldSearchKnowledge
+      ? '检索故障码表、厂家手册、SOP、历史工单，并建议拉取CMS/SCADA趋势。'
+      : '先补齐故障码、告警名或现场趋势，再进入证据检索。'
   const steps = [
     {
       id: 'normalize_case',
@@ -39,12 +53,21 @@ export function buildWindOpsPlanner(caseInfo, query = '', context = {}) {
       id: 'retrieve_evidence',
       layer: 'tools',
       title: '检索证据与实时/快照数据',
-      action: shouldSearchKnowledge
-        ? '检索故障码表、厂家手册、SOP、历史工单，并建议拉取CMS/SCADA趋势。'
-        : '先补齐故障码、告警名或现场趋势，再进入证据检索。',
+      action: retrieveAction,
       tool: 'LLMWiki + CMS/SCADA/EAM',
-      status: shouldSearchKnowledge ? 'ready' : 'needs_input',
+      status: citations.length || shouldSearchKnowledge ? 'ready' : 'needs_input',
     },
+    ...(inspectionDefects.length
+      ? [{
+          id: 'inspection_review',
+          layer: 'models',
+          title: '巡检识图证据研判',
+          action: `多模态识别缺陷 ${inspectionDefects.map(d => (d.defect.includes(d.component) ? d.defect : `${d.component}${d.defect}`)).join('、')}（最高严重度 ${evidence.inspection.highestSeverity}）；` +
+            (evidence.inspection.needsExpertReview ? '含高危缺陷，转专家复核并前置安全门。' : '纳入诊断证据链，按严重度排序处置。'),
+          tool: 'MultimodalInspection',
+          status: evidence.inspection.needsExpertReview ? 'blocking' : 'ready',
+        }]
+      : []),
     {
       id: 'safety_gate',
       layer: 'core',

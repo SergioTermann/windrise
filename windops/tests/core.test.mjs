@@ -45,6 +45,35 @@ test('buildWindOpsPlanner evidencePriority 与 EVIDENCE_PRIORITY 一致', () => 
   assert.equal(EVIDENCE_PRIORITY[0], '厂家手册/故障码表')
 })
 
+test('buildWindOpsPlanner 传入证据时 retrieve_evidence 落地引用与备件', () => {
+  const evidence = {
+    citations: [{ tier: '厂家手册/故障码表', snippet: '变桨24V低压：查充电器与保险' }],
+    partsAndPoints: { parts: [{ name: '24V电源模块' }], points: [{ name: '变桨24V电压点位' }] },
+  }
+  const plan = buildWindOpsPlanner(buildWindOpsCase('变桨低压'), '变桨低压', {}, evidence)
+  const step = plan.steps.find(s => s.id === 'retrieve_evidence')
+  assert.match(step.action, /已检索命中 1 条证据/)
+  assert.match(step.action, /24V电源模块/)
+  assert.match(step.action, /变桨24V电压点位/)
+  assert.equal(step.status, 'ready')
+})
+
+test('buildWindOpsPlanner 巡检高危缺陷插入 inspection_review[blocking] 步骤', () => {
+  const evidence = { inspection: { defects: [{ component: '叶片', defect: '叶片裂纹', severity: 'high' }], highestSeverity: 'high', needsExpertReview: true } }
+  const plan = buildWindOpsPlanner(buildWindOpsCase('叶片裂纹巡检'), '叶片裂纹巡检', {}, evidence)
+  const step = plan.steps.find(s => s.id === 'inspection_review')
+  assert.ok(step, '应插入巡检研判步骤')
+  assert.equal(step.status, 'blocking')
+  assert.match(step.action, /叶片裂纹/)
+  assert.ok(!step.action.includes('叶片叶片')) // 部件/缺陷去重
+})
+
+test('buildWindOpsPlanner 无证据时保持六步且无 inspection 步骤', () => {
+  const plan = buildWindOpsPlanner(buildWindOpsCase('变桨低压'), '变桨低压')
+  assert.equal(plan.steps.length, 6)
+  assert.ok(!plan.steps.some(s => s.id === 'inspection_review'))
+})
+
 test('buildWindOpsSafetyGate 六类高风险各自校验项', () => {
   const cases = [
     ['3号机远程复位', '远程复位/启停机', /复位权限/],

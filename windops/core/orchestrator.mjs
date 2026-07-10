@@ -10,6 +10,7 @@ import { buildWindOpsSafetyGate } from './safety-gate.mjs'
 import { createLlmWiki } from './llm-wiki.mjs'
 import { routeWindOpsModel } from '../models/model-router.mjs'
 import { evidencePriorityLabels } from '../models/evidence-grader.mjs'
+import { analyzeInspection } from '../models/multimodal-inspection.mjs'
 import { buildWindOpsFeedbackLoop } from '../feedback/feedback-loop.mjs'
 import { buildWindOpsTrace } from '../feedback/trace-logger.mjs'
 import { routeWindOpsIntent } from '../business/intent-router.mjs'
@@ -44,13 +45,19 @@ export function runWindOpsAgent(query, context = {}, answer = '') {
   const modelRoute = routeWindOpsModel(query, faultCase)
   // LLM Wiki：Case + 记忆上下文 → 三层知识组织，产出分级证据与引用。
   const wiki = (context.wiki || getWiki()).lookup(faultCase, { query })
+  // 多模态巡检识图：现场上传的缺陷标签转结构化证据，进入诊断链。
+  const inspection = context.inspection ? analyzeInspection(context.inspection) : null
   const safetyGate = buildWindOpsSafetyGate(query, faultCase)
   // 专家规则兜底：证据为空或高风险时不下确定结论，只给排查路径与证据缺口。
   const fallback = expertRuleFallback(faultCase, {
-    evidenceCount: wiki.evidence?.length || 0,
-    highRisk: (safetyGate.riskActions?.length || 0) > 0,
+    evidenceCount: (wiki.evidence?.length || 0) + (inspection?.evidence?.length || 0),
+    highRisk: (safetyGate.riskActions?.length || 0) > 0 || Boolean(inspection?.needsExpertReview),
   })
-  const planner = buildWindOpsPlanner(faultCase, query, context)
+  const planner = buildWindOpsPlanner(faultCase, query, context, {
+    citations: wiki.citations,
+    partsAndPoints: wiki.partsAndPoints,
+    inspection,
+  })
   const feedbackLoop = buildWindOpsFeedbackLoop(faultCase, answer)
   const trace = buildWindOpsTrace({ caseInfo: faultCase, plan: planner, safetyGate, modelRoute, answer })
   return {
@@ -67,6 +74,9 @@ export function runWindOpsAgent(query, context = {}, answer = '') {
       citations: wiki.citations,
       parts_and_points: wiki.partsAndPoints,
     },
+    inspection: inspection
+      ? { defects: inspection.defects, highest_severity: inspection.highestSeverity, needs_expert_review: inspection.needsExpertReview, summary: inspection.summary }
+      : null,
     expert_fallback: fallback,
     planner,
     safety_gate: safetyGate,
@@ -86,6 +96,7 @@ export function buildWindOpsArchitecturePayload(query, context = {}, answer = ''
     model_route: result.model_route,
     evidence_priority: result.evidence_priority,
     llm_wiki: result.llm_wiki,
+    inspection: result.inspection,
     expert_fallback: result.expert_fallback,
     planner: result.planner,
     safety_gate: result.safety_gate,
@@ -96,11 +107,16 @@ export function buildWindOpsArchitecturePayload(query, context = {}, answer = ''
 
 export function buildWindOpsArchitectureContext(query, context = {}) {
   const faultCase = buildWindOpsCase(query, context)
-  const plan = buildWindOpsPlanner(faultCase, query, context)
   const safety = buildWindOpsSafetyGate(query, faultCase)
   const memoryRouter = buildWindOpsMemoryRouter(faultCase, query, context)
   const modelRoute = routeWindOpsModel(query, faultCase)
   const wiki = (context.wiki || getWiki()).lookup(faultCase, { query })
+  const inspection = context.inspection ? analyzeInspection(context.inspection) : null
+  const plan = buildWindOpsPlanner(faultCase, query, context, {
+    citations: wiki.citations,
+    partsAndPoints: wiki.partsAndPoints,
+    inspection,
+  })
   const citationLine = wiki.citations?.length
     ? wiki.citations.map(c => `${c.tier}「${c.snippet}」(${c.applicability || c.updatedAt || c.source})`).join('；')
     : '暂无命中，转专家规则兜底：只给排查路径与证据缺口'

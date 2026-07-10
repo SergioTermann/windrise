@@ -79,6 +79,7 @@ export { createBm25Index, tokenize } from './models/bm25-retriever.mjs'
 export { createVectorIndex } from './models/vector-retriever.mjs'
 export { createKnowledgeGraph, nodeId } from './models/knowledge-graph.mjs'
 export { detectAnomalies } from './models/timeseries-anomaly.mjs'
+export { analyzeInspection } from './models/multimodal-inspection.mjs'
 
 // ⑦ 反馈层
 export { buildWindOpsFeedbackLoop, extractFeedbackItems } from './feedback/feedback-loop.mjs'
