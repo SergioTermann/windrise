@@ -15,10 +15,15 @@ import { buildWindOpsTrace } from '../feedback/trace-logger.mjs'
 import { routeWindOpsIntent } from '../business/intent-router.mjs'
 
 // 进程级单例 LLM Wiki（默认知识种子），避免每次编排重建索引。
+// 反馈层知识飞轮通过 getWindOpsWiki() 拿到同一实例，把已验证处置卡写回 L1。
 let sharedWiki = null
 function getWiki() {
   if (!sharedWiki) sharedWiki = createLlmWiki()
   return sharedWiki
+}
+
+export function getWindOpsWiki() {
+  return getWiki()
 }
 
 export const WIND_OPS_ARCHITECTURE_LAYERS = [

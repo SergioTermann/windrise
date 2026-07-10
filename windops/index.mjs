@@ -51,6 +51,7 @@ export {
   runWindOpsAgent,
   buildWindOpsArchitecturePayload,
   buildWindOpsArchitectureContext,
+  getWindOpsWiki,
 } from './core/orchestrator.mjs'
 
 // ⑤ 工具层
@@ -81,6 +82,7 @@ export { detectAnomalies } from './models/timeseries-anomaly.mjs'
 
 // ⑦ 反馈层
 export { buildWindOpsFeedbackLoop, extractFeedbackItems } from './feedback/feedback-loop.mjs'
+export { createKnowledgeFlywheel, isVerifiedForCache } from './feedback/knowledge-flywheel.mjs'
 export { buildWindOpsTrace } from './feedback/trace-logger.mjs'
 export { createReviewPool } from './feedback/review-pool.mjs'
 export { summarizeKpi } from './feedback/kpi.mjs'

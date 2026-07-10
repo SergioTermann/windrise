@@ -73,6 +73,26 @@ test('LLM Wiki 多路一致的文档命中通路数 > 1', () => {
   assert.ok(manual.via.length >= 2, `多路召回应命中多个通路，实际 via=${manual.via}`)
 })
 
+test('LLM Wiki 适用条件门控：剔除跨部件/跨故障码的不适用证据', () => {
+  const wiki = createLlmWiki()
+  const c = buildWindOpsCase('3号机变桨24V低压 303804 近30分钟电压波动 停机')
+  const r = wiki.lookup(c, { query: '变桨24V低压怎么处理' })
+  const ids = r.citations.map(ci => ci.id)
+  // 齿轮箱(512006)、偏航等跨部件文档在有在案证据时应被剔除。
+  assert.ok(!ids.some(id => id.includes('gearbox')), `不应含齿轮箱证据：${ids}`)
+  assert.ok(!ids.some(id => id.includes('yaw')), `不应含偏航证据：${ids}`)
+  // 同故障码的手册排在最前。
+  assert.equal(r.citations[0].id, 'manual-pitch-24v')
+})
+
+test('LLM Wiki 无部件对齐信息时不做适用性剔除（宽召回）', () => {
+  const wiki = createLlmWiki()
+  // 无法识别部件/故障码的泛查询：仍按文本相似返回，不因门控清空。
+  const c = buildWindOpsCase('油温')
+  const r = wiki.lookup(c, { query: '油温高' })
+  assert.ok(r.citations.length > 0)
+})
+
 test('LLM Wiki L1 语义缓存命中优先于多路召回', () => {
   const cache = createSemanticCache()
   const wiki = createLlmWiki({ cache })

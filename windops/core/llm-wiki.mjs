@@ -52,8 +52,13 @@ export function createLlmWiki({
     // 融合：按文档 id 合并三路，记录命中通路并叠加分数。
     const merged = mergeChannels([...bm25Hits, ...vectorHits], graphEvidence, docMap)
 
+    // 适用条件匹配：文本相似之外，按 Case 的部件/故障码对齐证据，
+    // 同码/同部件加权、跨部件冲突降权，命中在案证据时剔除明显不适用文档。
+    // 对应技术细节第 15 页“版本一致性：同一故障在不同机型/控制器版本处理路径不同”。
+    const gated = applyApplicability(caseInfo, merged)
+
     // L3 Rerank + 证据分级：先用融合分作为基础相似分，再乘证据分级权重。
-    const graded = gradeEvidence(merged).slice(0, topK)
+    const graded = gradeEvidence(gated).slice(0, topK)
     const citations = graded.map(toCitation)
 
     return {
@@ -90,6 +95,34 @@ export function createLlmWiki({
 
 function tag(hit, channel) {
   return { id: hit.id, source: hit.doc?.source || 'unverified', text: hit.doc?.text || '', doc: hit.doc, score: hit.score, via: [channel] }
+}
+
+// 按 Case 的部件/故障码对齐证据适用条件：
+// - 同故障码强加权、同部件加权（图谱证据视为已按部件对齐，不降权）；
+// - 部件冲突（双方部件已知且不同）降权；
+// - 只要存在“同码/同部件”的在案证据，就剔除部件冲突且非同码的明显不适用文档。
+function applyApplicability(caseInfo, candidates) {
+  const knownFault = caseInfo.faultCode && caseInfo.faultCode !== '待补充' ? caseInfo.faultCode : null
+  const caseComponents = [caseInfo.component, caseInfo.system].filter(v => v && v !== '待识别')
+  const scored = candidates.map(item => {
+    const doc = item.doc || {}
+    const isGraph = item.via.includes('graph')
+    const faultMatch = knownFault && doc.faultCode && doc.faultCode === knownFault
+    const componentMatch = doc.component && caseComponents.some(c => c === doc.component)
+    const componentConflict =
+      !isGraph && doc.component && caseComponents.length > 0 && !caseComponents.some(c => c === doc.component)
+    let factor = 1
+    if (faultMatch) factor *= 1.6
+    if (componentMatch) factor *= 1.3
+    if (componentConflict && !faultMatch) factor *= 0.4
+    return { ...item, score: round(item.score * factor), faultMatch, componentMatch, componentConflict }
+  })
+  const hasOnTopic = scored.some(item => item.faultMatch || item.componentMatch)
+  const gated = hasOnTopic
+    ? scored.filter(item => item.faultMatch || item.componentMatch || !item.componentConflict)
+    : scored
+  // 清理内部标记，保留分级所需字段。
+  return gated.map(({ faultMatch, componentMatch, componentConflict, ...rest }) => rest)
 }
 
 // 合并多路召回：同一文档取各通路加权分之和，并集其命中通路。
