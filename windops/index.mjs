@@ -34,10 +34,18 @@ export { detectWindOpsWorkPhase, WORK_PHASE_BUDGET } from './memory/work-phase.m
 export { buildWindOpsMemoryRouter } from './memory/memory-router.mjs'
 export { createWindriseMem0Memory } from './memory/mem0-adapter.mjs'
 export { createWorkingMemory, decayConfidence } from './memory/working-memory.mjs'
+export { onboardTurbineProfile, findLookAlikeFleet, expertRuleFallback } from './memory/cold-start.mjs'
+export {
+  createProfileUpdater,
+  extractFromEvent,
+  scoreProfileConfidence,
+} from './memory/profile-updater.mjs'
 
 // ④ 模型应用层
 export { buildWindOpsPlanner, EVIDENCE_PRIORITY } from './core/planner.mjs'
 export { buildWindOpsSafetyGate } from './core/safety-gate.mjs'
+export { createLlmWiki } from './core/llm-wiki.mjs'
+export { SEED_WIKI_DOCUMENTS, SEED_KNOWLEDGE_GRAPH } from './core/knowledge-seed.mjs'
 export {
   WIND_OPS_ARCHITECTURE_LAYERS,
   runWindOpsAgent,
@@ -67,6 +75,8 @@ export { routeWindOpsModel, MODEL_ROUTES } from './models/model-router.mjs'
 export { gradeEvidence, EVIDENCE_TIERS, evidencePriorityLabels } from './models/evidence-grader.mjs'
 export { createSemanticCache, buildCacheKey } from './models/semantic-cache.mjs'
 export { createBm25Index, tokenize } from './models/bm25-retriever.mjs'
+export { createVectorIndex } from './models/vector-retriever.mjs'
+export { createKnowledgeGraph, nodeId } from './models/knowledge-graph.mjs'
 export { detectAnomalies } from './models/timeseries-anomaly.mjs'
 
 // ⑦ 反馈层

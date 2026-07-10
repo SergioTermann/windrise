@@ -4,13 +4,22 @@
 
 import { buildWindOpsCase } from '../data/case-builder.mjs'
 import { buildWindOpsMemoryRouter } from '../memory/memory-router.mjs'
+import { expertRuleFallback } from '../memory/cold-start.mjs'
 import { buildWindOpsPlanner } from './planner.mjs'
 import { buildWindOpsSafetyGate } from './safety-gate.mjs'
+import { createLlmWiki } from './llm-wiki.mjs'
 import { routeWindOpsModel } from '../models/model-router.mjs'
 import { evidencePriorityLabels } from '../models/evidence-grader.mjs'
 import { buildWindOpsFeedbackLoop } from '../feedback/feedback-loop.mjs'
 import { buildWindOpsTrace } from '../feedback/trace-logger.mjs'
 import { routeWindOpsIntent } from '../business/intent-router.mjs'
+
+// 进程级单例 LLM Wiki（默认知识种子），避免每次编排重建索引。
+let sharedWiki = null
+function getWiki() {
+  if (!sharedWiki) sharedWiki = createLlmWiki()
+  return sharedWiki
+}
 
 export const WIND_OPS_ARCHITECTURE_LAYERS = [
   { id: 'business', name: '业务层', responsibility: '接收告警、故障码、现场描述和工单诉求，区分聊天、知识查询、现场排查和复盘。' },
@@ -28,8 +37,15 @@ export function runWindOpsAgent(query, context = {}, answer = '') {
   const intent = routeWindOpsIntent(query, faultCase)
   const memoryRouter = buildWindOpsMemoryRouter(faultCase, query, context)
   const modelRoute = routeWindOpsModel(query, faultCase)
-  const planner = buildWindOpsPlanner(faultCase, query, context)
+  // LLM Wiki：Case + 记忆上下文 → 三层知识组织，产出分级证据与引用。
+  const wiki = (context.wiki || getWiki()).lookup(faultCase, { query })
   const safetyGate = buildWindOpsSafetyGate(query, faultCase)
+  // 专家规则兜底：证据为空或高风险时不下确定结论，只给排查路径与证据缺口。
+  const fallback = expertRuleFallback(faultCase, {
+    evidenceCount: wiki.evidence?.length || 0,
+    highRisk: (safetyGate.riskActions?.length || 0) > 0,
+  })
+  const planner = buildWindOpsPlanner(faultCase, query, context)
   const feedbackLoop = buildWindOpsFeedbackLoop(faultCase, answer)
   const trace = buildWindOpsTrace({ caseInfo: faultCase, plan: planner, safetyGate, modelRoute, answer })
   return {
@@ -39,6 +55,14 @@ export function runWindOpsAgent(query, context = {}, answer = '') {
     memory_router: memoryRouter,
     model_route: modelRoute,
     evidence_priority: evidencePriorityLabels(),
+    llm_wiki: {
+      hit: wiki.hit,
+      cached: wiki.cached,
+      recall: wiki.recall,
+      citations: wiki.citations,
+      parts_and_points: wiki.partsAndPoints,
+    },
+    expert_fallback: fallback,
     planner,
     safety_gate: safetyGate,
     feedback_loop: feedbackLoop,
@@ -56,6 +80,8 @@ export function buildWindOpsArchitecturePayload(query, context = {}, answer = ''
     memory_router: result.memory_router,
     model_route: result.model_route,
     evidence_priority: result.evidence_priority,
+    llm_wiki: result.llm_wiki,
+    expert_fallback: result.expert_fallback,
     planner: result.planner,
     safety_gate: result.safety_gate,
     feedback_loop: result.feedback_loop,
@@ -69,11 +95,20 @@ export function buildWindOpsArchitectureContext(query, context = {}) {
   const safety = buildWindOpsSafetyGate(query, faultCase)
   const memoryRouter = buildWindOpsMemoryRouter(faultCase, query, context)
   const modelRoute = routeWindOpsModel(query, faultCase)
+  const wiki = (context.wiki || getWiki()).lookup(faultCase, { query })
+  const citationLine = wiki.citations?.length
+    ? wiki.citations.map(c => `${c.tier}「${c.snippet}」(${c.applicability || c.updatedAt || c.source})`).join('；')
+    : '暂无命中，转专家规则兜底：只给排查路径与证据缺口'
+  const partsLine = wiki.partsAndPoints?.parts?.length
+    ? wiki.partsAndPoints.parts.map(p => p.name).join('、')
+    : '无图谱备件命中'
   return [
     'WindOps 七层架构上下文：',
     `- 结构化 Case：风机=${faultCase.turbineId}；风场=${faultCase.windFarmName || faultCase.windFarmId}；系统=${faultCase.system}；部件=${faultCase.component}；故障码=${faultCase.faultCode}；时间窗=${faultCase.timeWindow}；缺失=${faultCase.missing.length ? faultCase.missing.join('、') : '无明显缺口'}；置信度=${faultCase.confidence}。`,
     `- Memory Router：作业阶段=${memoryRouter.workPhaseLabel}；路由键=${memoryRouter.routerKey}；优先保留=${memoryRouter.tokenBudgetPolicy.keep.join('、')}；可裁剪=${memoryRouter.tokenBudgetPolicy.trim.join('、')}。`,
     `- 模型路由：${modelRoute.label} → ${modelRoute.model}（${modelRoute.reason}）。`,
+    `- LLM Wiki（${wiki.hit} 命中）证据：${citationLine}。`,
+    `- 图谱备件/BOM 建议：${partsLine}。`,
     `- Planner：${plan.steps.map(step => `${step.title}[${step.status}]`).join(' -> ')}。`,
     `- Safety Gate：${safety.decision}；校验项=${safety.requiredChecks.join('；')}。`,
     '- 证据分级：厂家手册/故障码表 > 场站SOP > 专家规则 > 已关闭历史工单 > 未验证经验。',
