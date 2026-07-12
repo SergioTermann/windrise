@@ -4143,7 +4143,8 @@
             graph.currentMessage = message;
             graph.evidenceContext = evidenceContext;
             renderReasoningPanel(graph, host);
-            playReasoningSteps(graph).catch(error => {
+            // 先把推理图谱逐步跑完（高亮到闭环），再返回，让结论排在图谱推理之后而非并行秒出。
+            await playReasoningSteps(graph).catch(error => {
                 console.error(error);
                 finishReasoningPanelAfterError(graph);
             });
@@ -4412,8 +4413,8 @@
                     reasoningChainTimer = null;
                     resolve();
                 };
-                const stepDelayMs = 900;
-                const maxPlaybackMs = Math.min(24000, Math.max(12000, graph.steps.length * stepDelayMs + 1800));
+                const stepDelayMs = 500;
+                const maxPlaybackMs = Math.min(14000, Math.max(5000, graph.steps.length * stepDelayMs + 1200));
                 const timeout = setTimeout(finish, maxPlaybackMs);
                 const highlight = () => {
                     const nodeEls = flowEl.querySelectorAll('.reasoning-node');

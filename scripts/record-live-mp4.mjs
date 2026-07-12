@@ -102,10 +102,10 @@ const DIRECTOR = (questions) => `
     const ubub = users[users.length - 1];
     if (ubub) { await smoothScroll(scrollTargetFor(ubub) - 40, 700); await sleep(1500); }
     const m = lastAssistant();
-    // ① 展示本轮推理图谱（滚到图谱卡片顶部，停留看图）
+    // ① 滚到本轮推理图谱，镜头停在图谱上看它推理（此时结论尚未出现）
     const card = m ? m.querySelector('.reasoning-card') : null;
-    if (card) { await smoothScroll(scrollTargetFor(card) - 16, 900); await sleep(5000); }
-    // ② 等答案渲染完（不再是“正在…”占位）
+    if (card) { await smoothScroll(scrollTargetFor(card) - 16, 900); await sleep(800); }
+    // ② 等推理图谱跑完、结论渲染出来（不再是“正在…”占位）
     const answerReady = () => {
       const el = m ? m.querySelector('.assistant-answer') : null;
       if (!el) return false;
