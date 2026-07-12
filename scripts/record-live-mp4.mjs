@@ -78,8 +78,8 @@ const DIRECTOR = (questions) => `
     const max = c.scrollHeight - c.clientHeight; const to = Math.max(0, Math.min(max, target));
     (function step(now){ const p = Math.min(1, (now - t0) / dur); const e = p < 0.5 ? 2*p*p : 1 - Math.pow(-2*p+2, 2)/2; c.scrollTop = start + (to - start) * e; if (p < 1) requestAnimationFrame(step); else res(); })(performance.now());
   });
-  // 关闭“排查过程”思维链展示（其可视化的 seed 案例后段识别不准，不对客户展示）
-  try { const tg = document.getElementById('reasoningToggle'); if (tg && tg.getAttribute('aria-pressed') === 'true') toggleReasoningChain(); } catch (e) {}
+  // 保持“排查过程”开启：展示推理图谱（思维链步骤/分析中状态已在页面内隐藏）
+  try { const tg = document.getElementById('reasoningToggle'); if (tg && tg.getAttribute('aria-pressed') !== 'true') toggleReasoningChain(); } catch (e) {}
   await sleep(3000);                                   // 片头停留
   const lastAssistant = () => [...document.querySelectorAll('.message.assistant')].pop();
   const answerEl = (m) => m ? (m.querySelector('.assistant-answer') || m.querySelector('.message-content') || m) : null;
@@ -100,22 +100,26 @@ const DIRECTOR = (questions) => `
     // ⓪ 展示“提问”：滚到刚发出的问题气泡，停顿让观众看清在问什么
     const users = [...document.querySelectorAll('.message.user')];
     const ubub = users[users.length - 1];
-    if (ubub) { await smoothScroll(scrollTargetFor(ubub) - 40, 700); await sleep(1600); }
-    // ① 等答案真正渲染完（不再是“正在…”占位）
+    if (ubub) { await smoothScroll(scrollTargetFor(ubub) - 40, 700); await sleep(1500); }
+    const m = lastAssistant();
+    // ① 展示本轮推理图谱（滚到图谱卡片顶部，停留看图）
+    const card = m ? m.querySelector('.reasoning-card') : null;
+    if (card) { await smoothScroll(scrollTargetFor(card) - 16, 900); await sleep(5000); }
+    // ② 等答案渲染完（不再是“正在…”占位）
     const answerReady = () => {
-      const el = answerEl(lastAssistant());
+      const el = m ? m.querySelector('.assistant-answer') : null;
       if (!el) return false;
       const t = (el.textContent || '').trim();
       return t.length > 25 && !t.includes('正在') && !el.querySelector('.thinking, [class*="thinking"]');
     };
     await until(answerReady, 60000);
-    await sleep(500);
-    // ② 滚到助手回答，按长度停留阅读
-    const m = lastAssistant();
+    await sleep(400);
+    // ③ 滚到助手回答（最终指令），按长度停留阅读
     if (m) {
-      await smoothScroll(scrollTargetFor(m) - 40, 1100);
-      const len = (answerEl(m).textContent || '').length;
-      await sleep(Math.min(11000, Math.max(5200, len * 32)));
+      const ans = m.querySelector('.assistant-answer') || m;
+      await smoothScroll(scrollTargetFor(ans) - 70, 1400);
+      const len = ((m.querySelector('.assistant-answer') || m).textContent || '').length;
+      await sleep(Math.min(11000, Math.max(5000, len * 30)));
     } else {
       await sleep(6000);
     }

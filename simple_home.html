@@ -2530,6 +2530,10 @@
             ['阻尼缓冲器', 'case:yaw_hydraulic_pressure'],
             ['压力恢复缓慢', 'case:yaw_hydraulic_pressure'],
             ['偏航液压系统压力异常', 'case:yaw_hydraulic_pressure'],
+            ['偏航压力异常', 'case:yaw_hydraulic_pressure'],
+            ['偏航压力', 'case:yaw_hydraulic_pressure'],
+            ['偏航回路', 'case:yaw_hydraulic_pressure'],
+            ['偏航液压', 'case:yaw_hydraulic_pressure'],
             ['t_228', 'case:yaw_brake_pressure_sensor'],
             ['t_229', 'case:yaw_brake_pressure_sensor'],
             ['偏航制动压力', 'case:yaw_brake_pressure_sensor'],
@@ -3407,7 +3411,34 @@
         }
 
         function inferReasoningCaseForMessage(message) {
-            return getReasoningCase(message) || (isReasoningFollowUpMessage(message) ? getLastReasoningCase() : null) || genericReasoningCase;
+            const last = getLastReasoningCase();
+            const direct = getReasoningCase(message);
+            // 一条诊断链里，跟进消息多为只报数据/现象（如“主回路压力280bar”“电机动作一次”），
+            // 这些消息会被“液压泵/高速轴”等弱别名误判到别的案例。已确立案例后默认延续上一轮，
+            // 仅当新消息强匹配到“另一个”案例（≥4字专有别名命中）时才切换。
+            if (last && !isGenericReasoningCase(last.id)) {
+                if (!direct || direct.id === last.id) return last;
+                return reasoningCaseStronglyMatches(message, direct.id) ? direct : last;
+            }
+            return direct || (isReasoningFollowUpMessage(message) ? last : null) || genericReasoningCase;
+        }
+
+        // 消息是否“强匹配”到某案例：含该案例的具体专有别名（长度≥4且非通用词），
+        // 用于决定是否值得从已确立案例切走，避免被单字/通用词带偏。
+        function reasoningCaseStronglyMatches(message, caseId) {
+            const normalized = String(message || '').toLowerCase();
+            if (!normalized || !caseId) return false;
+            const terms = [];
+            const node = (window.__reasoningNodes || []).find(n => n?.id === caseId && n?.type === 'fault_case');
+            if (node) terms.push(node.label, ...(node.aliases || []));
+            try { for (const [key, id] of reasoningCaseAliases) if (id === caseId) terms.push(key); } catch {}
+            const catalogEntry = reasoningCaseCatalog()[caseId];
+            if (catalogEntry && catalogEntry.label) terms.push(catalogEntry.label);
+            const generic = /^(温度|压力|液压|轴承|滤芯|润滑|电流|系统|电机|回路|阀门|油液|信号|故障|异常|检查|测量|数值|反馈)$/;
+            return terms
+                .map(t => String(t || '').trim().toLowerCase())
+                .filter(t => t.length >= 4 && !generic.test(t))
+                .some(t => normalized.includes(t));
         }
 
         function hasReasoningGraphCase(id) {
@@ -4090,7 +4121,9 @@
                 return fallbackGraph;
             }
 
-            const intent = detectReasoningIntent(message);
+            // 统一用聚焦的“处置视图”构建推理图谱：只亮该案例的处置/验证路径，
+            // 避免“原因链”视图沿根因推导/失效模式把整列相邻故障案例一起点亮（会穿帮）。
+            const intent = 'action';
             const seed = inferReasoningCaseForMessage(message);
             const evidenceContext = rememberReasoningEvidence(seed.id, message);
 
@@ -4136,9 +4169,9 @@
             panel.innerHTML = `
                 <div class="reasoning-card">
                     <div class="reasoning-card-header">
-                        <div class="reasoning-card-title">思考过程 · ${escapeHtml(graph.seed.label)} · ${escapeHtml(intentToLabel(graph.intent))}</div>
+                        <div class="reasoning-card-title">推理图谱 · ${escapeHtml(graph.seed.label)} · ${escapeHtml(intentToLabel(graph.intent))}</div>
                         <div class="reasoning-card-meta">
-                            <div class="reasoning-card-status" id="reasoningCardStatus">准备中</div>
+                            <div class="reasoning-card-status" id="reasoningCardStatus" style="display:none">准备中</div>
                             <div class="reasoning-card-actions" aria-label="导图工具">
                                 <button type="button" class="reasoning-icon-button" title="导出导图图片" onclick="downloadReasoningGraph(this)">
                                     <span class="material-symbols-outlined">download</span>
@@ -4152,7 +4185,7 @@
                     <div class="reasoning-card-body">
                         <div class="reasoning-network-row">
                             <div class="reasoning-network" id="reasoningNetwork"></div>
-                            <div class="reasoning-live-action" id="reasoningLiveAction">
+                            <div class="reasoning-live-action" id="reasoningLiveAction" style="display:none">
                                 <div>
                                     <div class="reasoning-live-action-label">现场动作</div>
                                     <div class="reasoning-live-action-text">等待导图开始定位。</div>
@@ -4161,9 +4194,9 @@
                             </div>
                         </div>
                         <div class="reasoning-legend" id="reasoningLegend"></div>
-                        <div class="reasoning-flow" id="reasoningFlow"></div>
-                        <div class="reasoning-dynamic-result" id="reasoningDynamicResult"></div>
-                        <div class="reasoning-steps" id="reasoningSteps"></div>
+                        <div class="reasoning-flow" id="reasoningFlow" style="display:none"></div>
+                        <div class="reasoning-dynamic-result" id="reasoningDynamicResult" style="display:none"></div>
+                        <div class="reasoning-steps" id="reasoningSteps" style="display:none"></div>
                     </div>
                 </div>
             `;
