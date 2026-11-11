@@ -1,116 +1,151 @@
 # Windrise LLMWiki
 
-Windrise LLMWiki 是面向风电场运维的本地知识助手与诊断编排系统。项目目标不是做一个新的展示页，而是把风机故障、场站 SOP、厂家手册、历史工单和专家规则组织成可追溯、可验证、可闭环的技术架构。
+Windrise LLMWiki is a local knowledge assistant and diagnostic orchestration system for wind farm operations and maintenance. It organizes turbine faults, site standard operating procedures (SOPs), manufacturer manuals, historical work orders, and expert rules into a traceable, verifiable technical architecture with a feedback loop.
 
-## 项目定位
+## Project Overview
 
-- 本地优先：支持 LM Studio / 本地模型接入，知识库和诊断流程可在内网运行。
-- LLMWiki 知识底座：统一索引故障码、机型、部件、测点、工单、SOP 和来源文档。
-- WindOps 诊断流程：从告警或现场描述生成结构化 Case，再由 Planner 拆解排查路径。
-- 证据可追溯：回答必须引用厂家手册、故障码表、场站 SOP、专家规则或历史工单等来源。
-- 安全门控：涉及复位、旁路、限电、登塔、停送电等动作时，优先输出风险、前置条件和人工确认点。
-- 反馈闭环：工单关闭后沉淀根因、措施、备件、复发率和专家复核结果。
+- Local-first operation: supports LM Studio and local models, with knowledge storage and diagnostic workflows that can run on an internal network.
+- LLMWiki knowledge foundation: indexes fault codes, turbine models, components, measurement points, work orders, SOPs, and source documents.
+- WindOps diagnostic workflow: converts alarms or field reports into structured cases, then uses a Planner to develop troubleshooting paths.
+- Traceable evidence: answers must cite sources such as manufacturer manuals, fault-code tables, site SOPs, expert rules, or historical work orders.
+- Safety gates: for actions such as resets, bypasses, power curtailment, tower climbing, de-energization, and re-energization, prioritizes risks, prerequisites, and human confirmation points.
+- Feedback loop: captures root causes, corrective actions, spare parts, recurrence rates, and expert reviews when work orders are closed.
 
-## 技术架构
+## Technical Architecture
 
 ```text
-业务入口
-  -> 告警 / 故障码 / 运维提问 / 现场短反馈
+Business Entry Points
+  -> Alarms / Fault codes / Maintenance questions / Brief field updates
 
-数据标准化层
-  -> 风机、机型、故障码、部件、测点、时间、工况、现场状态
+Data Normalization Layer
+  -> Turbine, model, fault code, component, measurement point, time,
+     operating conditions, and field status
 
-LLMWiki 知识层
-  -> 厂家手册、故障码表、场站 SOP、专家规则、历史工单、图谱路径
+LLMWiki Knowledge Layer
+  -> Manufacturer manuals, fault-code tables, site SOPs, expert rules,
+     historical work orders, and graph paths
 
-诊断编排层
-  -> Case 标准化、Planner 路径拆解、候选原因排序、验证动作生成
+Diagnostic Orchestration Layer
+  -> Case normalization, Planner task decomposition, candidate cause ranking,
+     and verification action generation
 
-工具与系统层
-  -> CMS、SCADA、EAM、备件、气象、工作票等只读查询接口
+Tools and Systems Layer
+  -> Read-only interfaces for CMS, SCADA, EAM, spare parts, weather,
+     and work permits
 
-安全与合规层
-  -> 操作风险识别、强制人工确认、禁止越权执行
+Safety and Compliance Layer
+  -> Operational risk identification, mandatory human confirmation,
+     and prevention of unauthorized execution
 
-反馈学习层
-  -> 工单结果、专家复核、短期 TTL 信息、本地项目记忆
+Feedback and Learning Layer
+  -> Work-order outcomes, expert reviews, short-lived information with TTL,
+     and local project memory
 ```
 
-## 核心能力
+## Core Capabilities
 
-### 故障诊断
+### Fault Diagnosis
 
-- 支持故障码精确匹配、品牌/机型限定、短码歧义识别。
-- 输出故障含义、可能原因、排查步骤、复位条件和安全提醒。
-- 使用 LLMWiki 证据分级：厂家手册/故障码表 > 场站 SOP > 专家规则 > 已关闭历史工单 > 未验证经验。
+- Supports exact fault-code matching, manufacturer/model constraints, and ambiguity detection for short codes.
+- Integrates the Ambiguity Entropy Gate (AEG): calculates the distribution of meanings for a fault code from the local `wind-llmwiki/fault-index.jsonl`. When model/manufacturer/wind farm context is missing and entropy exceeds the threshold, it requests clarification before LLMWiki retrieval to avoid matching an unrelated meaning of the same code.
+- Once the model/manufacturer is provided, LLMWiki weights evidence by applicability and excludes explicitly conflicting manuals for other models or manufacturers while retaining general SOPs.
+- Integrates a Grounding Validator: checks fault codes, manufacturer/model scope, and LLMWiki citation consistency before returning the final answer. Exact matches are labeled for applicability; general or similar materials are explicitly marked as reference material only. Answers that explicitly cite an incorrect fault code fail grounding validation, and the failure is recorded in the trace.
+- Returns fault meanings, possible causes, troubleshooting steps, reset conditions, and safety reminders.
+- Uses the LLMWiki evidence hierarchy: manufacturer manuals/fault-code tables > site SOPs > expert rules > closed historical work orders > unverified experience.
 
-### 工单生成
-
-- 根据诊断 Case 生成运维工单建议。
-- 包含故障对象、现象、影响范围、风险等级、处理步骤、备件建议和验证口径。
-- 支持把关闭结果反哺到项目知识和后续诊断流程中。
-
-### 本地记忆
-
-- 当前实现为 Windrise 自研轻量记忆层。
-- 会话内保存最近故障对象、已执行动作、用户短反馈和关键上下文。
-- 项目级记忆使用本地 JSON 持久化；也支持可选接入 mem0 长期记忆。
-
-### mem0 长期记忆
-
-默认不强制启用 mem0，避免没有 API Key 时影响本地运行。配置 API Key 后，Windrise 会把对话轮次同步写入 mem0，并在下一轮请求前按当前问题检索相关长期记忆。
+AEG is enabled by default, with a default threshold of `0` (all fault codes with nonzero ambiguity entropy require clarification first). Use environment variables to adjust or disable it:
 
 ```bash
-export WINDRISE_MEM0_API_KEY=你的_mem0_api_key
+export WINDRISE_AEG_ENTROPY_THRESHOLD=0.5
+export WINDRISE_AEG_ENABLED=0
+```
+
+### Work-Order Generation
+
+- Generates maintenance work-order recommendations from diagnostic cases.
+- Includes the affected equipment, symptoms, scope of impact, risk level, handling steps, recommended spare parts, and verification criteria.
+- Feeds closure outcomes back into project knowledge and subsequent diagnostic workflows.
+
+### Local Memory
+
+- Uses Windrise's own lightweight memory layer.
+- Retains the most recent fault context, completed actions, brief user updates, and key context within a session.
+- Persists project memory in local JSON files, with optional mem0 integration for long-term memory.
+
+### mem0 Long-Term Memory
+
+mem0 is optional so that local operation does not require an API key. Once an API key is configured, Windrise also writes conversation turns to mem0 and retrieves relevant long-term memories for the current question before the next request.
+
+```bash
+export WINDRISE_MEM0_API_KEY=your_mem0_api_key
 export WINDRISE_MEM0_ENABLED=1
 
-# 可选
+# Optional
 export WINDRISE_MEM0_USER_ID=windrise-user
 export WINDRISE_MEM0_AGENT_ID=windrise
 export WINDRISE_MEM0_APP_ID=windrise-llmwiki
 export WINDRISE_MEM0_TOP_K=5
 ```
 
-实现上使用 mem0 Cloud REST API，不直接安装 `mem0ai` SDK；原因是当前项目依赖的 `@anthropic-ai/sdk@0.68.0` 与 `mem0ai@3.x` 的 peer 依赖范围冲突。REST 适配层位于 `windops/memory/mem0-adapter.mjs`（记忆层），不配置 mem0 时仍走本地 JSON 记忆。
+The implementation uses the mem0 Cloud REST API without installing the `mem0ai` SDK because the project's `@anthropic-ai/sdk@0.68.0` conflicts with the peer dependency range required by `mem0ai@3.x`. The REST adapter is located at `windops/memory/mem0-adapter.mjs` in the memory layer. Without mem0 configuration, the system continues to use local JSON memory.
 
-## 目录说明
+## Directory Guide
 
 ```text
-windops/                    风电运维七层架构（目录即分层）
-  business/                 ① 业务层：系统指令、意图路由
-  data/                     ② 数据层：FaultQueryRewriter、结构化 Case、厂家/术语同义映射
-  memory/                   ③ 记忆层：四层记忆 + Memory Router + mem0 + 工作记忆(TTL/置信度衰减)
-                            + 冷启动(台账Onboarding/Look-alike机群迁移/专家规则兜底)
-                            + 画像动态更新(事件旁路抽取/实时短期缓存/工单闭环批处理落库)
-  core/                     ④ 模型应用层：Planner(证据/备件/巡检缺陷落进计划步骤)、
-                            Safety Gate、编排器
-                            + LLM Wiki 三层知识组织(L1语义缓存→L2多路召回→L3分级重排
-                            + 按部件/故障码适用条件门控证据) + 知识种子
-  tools/                    ⑤ 工具层：ToolRegistry + Executor(重试/超时/柔性降级/安全门) + 模拟连接器
-  models/                   ⑥ 模型层：任务路由、证据分级、L1 语义缓存、BM25 召回、
-                            向量语义召回、部件-故障-措施-备件图谱、时序异常检测、
-                            多模态巡检识图(缺陷标签→分级证据进入诊断链)
-  feedback/                 ⑦ 反馈层：工单闭环、TraceLogger、审核池(轨迹落库/治理)、KPI 采集
-                            + 知识飞轮(治理通过后已验证处置卡回流 LLM Wiki L1)
-  tests/                    七层单元 + HTTP 集成测试（164 项）
-  index.mjs                 七层统一入口
-  test-architecture.mjs     七层架构快照测试
-src/commands/llmwiki/       LLMWiki 命令、查询、trace 和知识证据排序
-src/skills/bundled/         风电故障诊断与工单生成内置技能
-scripts/windrise-chat.mjs   本地聊天入口（消费 windops/ 七层架构）
+windops/                    Seven-layer wind operations architecture (one directory per layer)
+  business/                 1. Business: system instructions and intent routing
+  data/                     2. Data: FaultQueryRewriter, structured cases, and manufacturer/term synonyms
+                            + Query rewrite audits (slot source_span, provenance, confidence, version)
+  memory/                   3. Memory: four memory tiers + Memory Router + mem0
+                            + Working memory (TTL/confidence decay)
+                            + Cold start (asset-register onboarding, similar-fleet transfer,
+                              and expert-rule fallback)
+                            + Dynamic profile updates (event-based extraction, real-time short-term
+                              cache, and batch persistence of closed work orders)
+  core/                     4. Model application: Planner (evidence, spare parts, and inspection
+                              defects incorporated into plan steps), Safety Gate, and orchestrator
+                            + Three-tier LLM Wiki knowledge organization (L1 semantic cache ->
+                              L2 multi-channel retrieval -> L3 tiered reranking and evidence
+                              gating by component/fault-code applicability)
+                            + AEG ambiguity entropy gate
+                            + Grounding Validator (outbound fault-code/model/citation consistency)
+  tools/                    5. Tools: ToolRegistry + Executor (retries, timeouts, graceful degradation,
+                              and safety gates) + mock connectors
+                            + Tool Observation (tool_call_id, schema version, idempotency key,
+                              and degradation reason)
+  models/                   6. Models: task routing, evidence grading, L1 semantic cache, BM25 retrieval,
+                              vector semantic retrieval, component-fault-action-spare-part graph,
+                              time-series anomaly detection, and multimodal inspection analysis
+                              (defect labels enter the diagnostic chain as graded evidence)
+  feedback/                 7. Feedback: work-order closure, TraceLogger, review pool
+                              (trace persistence/governance), and KPI collection
+                            + Knowledge feedback loop (verified resolution cards return to
+                              LLM Wiki L1 after governance approval)
+                            + Quality gates/reward governance (routing by grounding, safety
+                              boundaries, and Planner completeness)
+                            + Query rewrite/KPI quality metrics (rewrite status, slot confidence,
+                              and gate status)
+                            + SFT/preference/RL sample exporters (structured export only;
+                              no automatic admission to the training pool)
+  tests/                    Seven-layer unit tests + HTTP integration tests (189 tests)
+  index.mjs                 Unified entry point for the seven layers
+  test-architecture.mjs     Seven-layer architecture snapshot tests
+src/commands/llmwiki/       LLMWiki commands, queries, traces, and knowledge evidence ranking
+src/skills/bundled/         Built-in wind turbine fault diagnosis and work-order generation skills
+scripts/windrise-chat.mjs   Local chat entry point (uses the windops/ seven-layer architecture)
 scripts/doc-knowledge-server.mjs
-                            文档知识服务、会话记忆和项目记忆
+                            Document knowledge service, session memory, and project memory
 scripts/build-wind-llmwiki.mjs
-                            构建风电 LLMWiki 知识索引
+                            Builds the wind power LLMWiki knowledge index
 scripts/build-fault-index.mjs
-                            构建结构化故障码索引
+                            Builds the structured fault-code index
 scripts/build-fault-mechanism-graph.mjs
-                            构建故障机理图谱
-wind-llmwiki/               生成后的风电知识库资产
-generated-knowledge/        结构化知识、图谱和评估产物
+                            Builds the fault mechanism graph
+wind-llmwiki/               Generated wind power knowledge assets
+generated-knowledge/        Structured knowledge, graphs, and evaluation outputs
 ```
 
-## 常用命令
+## Common Commands
 
 ```bash
 npm install
@@ -119,29 +154,29 @@ npm run smoke:wind-llmwiki
 npm run eval:faults
 npm run smoke:skills
 npm run serve:doc-knowledge
-npm test                     # 七层架构全部测试（单元 + HTTP 集成）
-npm run test:windops-unit    # 仅七层单元测试（domain/data/memory/core/tools/models/business/orchestrator）
-npm run test:windops-api     # 仅 HTTP 端到端集成测试（自带 server 生命周期）
+npm test                     # All seven-layer tests (unit + HTTP integration)
+npm run test:windops-unit    # Seven-layer unit tests only (domain/data/memory/core/tools/models/business/orchestrator)
+npm run test:windops-api     # HTTP end-to-end integration tests only (manages the server lifecycle)
 ```
 
-## 本地模型配置
+## Local Model Configuration
 
-默认面向本地模型服务运行。可通过环境变量配置模型端点：
+The system targets local model services by default. Configure the model endpoint with environment variables:
 
 ```bash
 export LMSTUDIO_BASE_URL=http://127.0.0.1:1234/v1
 export LMSTUDIO_MODEL=qwen/qwen3.5-9b
 ```
 
-然后运行：
+Then run:
 
 ```bash
-npm run run:lmstudio -- "查询 303804 故障的排查路径"
+npm run run:lmstudio -- "Find the troubleshooting path for fault code 303804"
 ```
 
-## 验证
+## Validation
 
-推荐在修改诊断架构、LLMWiki 索引或内置技能后执行：
+After modifying the diagnostic architecture, LLMWiki indexes, or built-in skills, run:
 
 ```bash
 node --check scripts/windrise-chat.mjs
@@ -150,6 +185,6 @@ npm run smoke:skills
 npm run smoke:wind-llmwiki
 ```
 
-## 命名说明
+## Naming Conventions
 
-本项目名称为 Windrise LLMWiki。README、包名和运行输出应使用 Windrise / LLMWiki 口径；历史恢复源码中的上游字符串只作为底层代码遗留存在，不代表当前项目定位。
+The project is named Windrise LLMWiki. The README, package name, and runtime output should use Windrise / LLMWiki terminology. Upstream strings in the historically recovered source remain as legacy implementation details and do not define the current project identity.

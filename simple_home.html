@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>风起时域 - 智能工作台</title>
+    <title>Windrise - Intelligent Workspace</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -1199,53 +1199,53 @@
             </div>
 
             <div class="nav-section">
-                <div class="nav-title">核心功能</div>
+                <div class="nav-title">Core Features</div>
 
                 <div class="nav-item static" aria-disabled="true">
                     <span class="material-symbols-outlined icon">location_on</span>
                     <div class="text">
-                        <span class="title">风场选址</span>
-                        <span class="desc">资源评估与智能选址</span>
+                        <span class="title">Wind Farm Siting</span>
+                        <span class="desc">Resource assessment and intelligent site selection</span>
                     </div>
                 </div>
 
                 <div class="nav-item static" aria-disabled="true">
                     <span class="material-symbols-outlined icon">assignment</span>
                     <div class="text">
-                        <span class="title">智能工单</span>
-                        <span class="desc">工单管理与派发</span>
+                        <span class="title">Smart Work Orders</span>
+                        <span class="desc">Work order management and dispatch</span>
                     </div>
                 </div>
 
                 <div class="nav-item static" aria-disabled="true">
                     <span class="material-symbols-outlined icon">monitoring</span>
                     <div class="text">
-                        <span class="title">智能值守</span>
-                        <span class="desc">实时监控与告警</span>
+                        <span class="title">Smart Monitoring</span>
+                        <span class="desc">Real-time monitoring and alerts</span>
                     </div>
                 </div>
 
                 <div class="nav-item static" aria-disabled="true">
                     <span class="material-symbols-outlined icon">trending_up</span>
                     <div class="text">
-                        <span class="title">电力交易</span>
-                        <span class="desc">市场分析与交易策略</span>
+                        <span class="title">Power Trading</span>
+                        <span class="desc">Market analysis and trading strategies</span>
                     </div>
                 </div>
 
                 <div class="nav-item" onclick="loadPage('/maintenance-assistant', this)">
                     <span class="material-symbols-outlined icon">smart_toy</span>
                     <div class="text">
-                        <span class="title">智导助手</span>
-                        <span class="desc">智能运维助手</span>
+                        <span class="title">Maintenance Assistant</span>
+                        <span class="desc">Intelligent operations and maintenance assistant</span>
                     </div>
                 </div>
 
                 <div class="nav-item" onclick="loadPage('/graph-report', this)">
                     <span class="material-symbols-outlined icon">account_tree</span>
                     <div class="text">
-                        <span class="title">图谱评估</span>
-                        <span class="desc">推理能力与覆盖率</span>
+                        <span class="title">Graph Evaluation</span>
+                        <span class="desc">Reasoning capabilities and coverage</span>
                     </div>
                 </div>
             </div>
@@ -1262,12 +1262,12 @@
             <div id="chatContainer" style="display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden;">
                 <div class="chat-messages" id="chatMessages">
                     <div class="welcome-message">
-                        <img src="/主页.png" alt="主页">
+                        <img src="/主页.png" alt="Home">
                     </div>
                 </div>
 
                 <div class="chat-input-area">
-                    <div class="chat-tip">有什么问题，我可以帮你解答</div>
+                    <div class="chat-tip">How can I help you?</div>
                     <div class="chat-mode-row">
                         <button type="button" class="graph-toggle-button" id="reasoningToggle" onclick="toggleReasoningChain()" aria-pressed="true">
                             <span class="material-symbols-outlined">account_tree</span>
@@ -2879,15 +2879,15 @@
             contentFrame.style.display = 'block';
             contentFrame.src = url;
 
-            const moduleName = url.includes('weather-siting') ? '风场选址' :
-                               url.includes('smart-workorder') ? '智能工单' :
-                               url.includes('data-platform') ? '智能值守' :
-                               url.includes('power-trading') ? '电力交易' :
-                               url.includes('graph-report') ? '图谱评估' :
-                               url.includes('maintenance-assistant') ? '智导助手' : '功能页面';
+            const moduleName = url.includes('weather-siting') ? 'Wind Farm Siting' :
+                               url.includes('smart-workorder') ? 'Smart Work Orders' :
+                               url.includes('data-platform') ? 'Smart Monitoring' :
+                               url.includes('power-trading') ? 'Power Trading' :
+                               url.includes('graph-report') ? 'Graph Evaluation' :
+                               url.includes('maintenance-assistant') ? 'Maintenance Assistant' : 'Features';
 
             pageTitle.textContent = moduleName;
-            pageDesc.textContent = '正在加载...';
+            pageDesc.textContent = 'Loading...';
 
             document.querySelectorAll('.nav-item').forEach(item => {
                 item.classList.remove('active');
